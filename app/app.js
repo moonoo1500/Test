@@ -58,19 +58,17 @@ const els = {
   statusSave: document.getElementById('status-save'),
 };
 
-const state = load() ?? {
-  notes: [newNote('Добро пожаловать', WELCOME)],
-  activeId: null,
-  theme: 'dark',
-  view: 'split',
-  query: '',
-};
-state.activeId ??= state.notes[0]?.id ?? null;
+const state = sanitize(load());
 
 /* ---------------- persistence ---------------- */
 
+/** crypto.randomUUID недоступен в незащищённом контексте (http://IP). */
+function uid() {
+  return globalThis.crypto?.randomUUID?.() ?? `n-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function newNote(title = 'Без названия', body = '') {
-  return { id: crypto.randomUUID(), title, body, updatedAt: Date.now() };
+  return { id: uid(), title, body, updatedAt: Date.now() };
 }
 
 function load() {
@@ -79,6 +77,35 @@ function load() {
   } catch {
     return null;
   }
+}
+
+/** Данные из localStorage — внешний вход: проверяем форму, иначе падаем на дефолт. */
+function sanitize(raw) {
+  const fallback = {
+    notes: [newNote('Добро пожаловать', WELCOME)],
+    activeId: null,
+    theme: 'dark',
+    view: 'split',
+    query: '',
+  };
+  if (!raw || !Array.isArray(raw.notes)) return fallback;
+  const notes = raw.notes
+    .filter((n) => n && typeof n.body === 'string')
+    .map((n) => ({
+      id: typeof n.id === 'string' && n.id ? n.id : uid(),
+      title: typeof n.title === 'string' ? n.title : titleOf(n.body),
+      body: n.body,
+      updatedAt: Number.isFinite(n.updatedAt) ? n.updatedAt : Date.now(),
+    }));
+  if (notes.length === 0) return fallback;
+  const activeId = notes.some((n) => n.id === raw.activeId) ? raw.activeId : notes[0].id;
+  return {
+    notes,
+    activeId,
+    theme: raw.theme === 'light' ? 'light' : 'dark',
+    view: ['edit', 'split', 'preview'].includes(raw.view) ? raw.view : 'split',
+    query: typeof raw.query === 'string' ? raw.query : '',
+  };
 }
 
 let saveTimer;
