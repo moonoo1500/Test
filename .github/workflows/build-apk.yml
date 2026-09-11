@@ -72,6 +72,25 @@ jobs:
           echo "VERSION=$VER" >> "$GITHUB_ENV"
           echo "клон: $SHA (Telegram $VER)"
 
+      - name: Подмодули апстрима (ffmpeg/libvpx/opus/jlatexmath/…)
+        run: |
+          # На master Telegram вынес нативные либы и jlatexmath в подмодули.
+          # Без них Gradle падает с «No variants exist» на :jlatexmath.
+          git -C tg submodule sync --recursive > /dev/null
+          git -C tg submodule update --init --depth 1 --jobs 4 --recursive 2>&1 | tail -4
+          missing=""
+          for d in TMessagesProj/lib/jlatexmath TMessagesProj/jni/third_party/ffmpeg \
+                   TMessagesProj/jni/third_party/libvpx TMessagesProj/jni/third_party/opus \
+                   TMessagesProj/jni/third_party/dav1d TMessagesProj/jni/third_party/libyuv \
+                   TMessagesProj/jni/third_party/openh264 TMessagesProj/jni/tlottie; do
+            [ -z "$(ls -A "tg/$d" 2>/dev/null)" ] && missing="$missing $d"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::пустые подмодули:$missing"
+            exit 1
+          fi
+          echo "подмодули заняли: $(du -sh tg/TMessagesProj/jni/third_party | cut -f1)"
+
       - name: Наложить патчи форка
         run: |
           python3 fork/tg-fork/apply.py tg \
