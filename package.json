@@ -1,0 +1,18 @@
+{
+  "name": "marknote",
+  "version": "0.1.0",
+  "description": "Минималистичный редактор Markdown с живым предпросмотром. Zero dependencies.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/dev-server.mjs",
+    "start": "node scripts/dev-server.mjs",
+    "test": "node --test",
+    "build": "node scripts/build.mjs",
+    "check": "npm test && node --check app/app.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

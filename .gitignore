@@ -1,0 +1,25 @@
+# Зависимости (в проекте их нет, но на будущее)
+node_modules/
+
+# Артефакты сборки
+dist/
+*.min.js.map
+
+# Логи и кэш
+*.log
+npm-debug.log*
+.cache/
+coverage/
+.nyc_output/
+
+# Редакторы и ОС
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Секреты — никогда в Git
+.env
+.env.*
+!.env.example

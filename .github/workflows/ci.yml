@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Тесты (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      # Зависимостей нет — npm ci не нужен, пайплайн занимает секунды.
+      - name: Syntax check
+        run: |
+          for f in app/app.js app/lib/*.js scripts/*.mjs; do node --check "$f"; done
+
+      - name: Unit tests
+        run: node --test
+
+  lint:
+    name: Проверка разметки и ссылок
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: README существует и не пустой
+        run: test "$(wc -c < README.md)" -gt 500
+
+      - name: В app/ нет внешних CDN-ссылок
+        run: |
+          if grep -rInE 'https?://(cdn|unpkg|jsdelivr|fonts\.googleapis)' app/ ; then
+            echo "Найдена внешняя загрузка ресурсов — приложение должно работать офлайн." >&2
+            exit 1
+          fi
+
+      - name: Нет секретов в индексе
+        run: |
+          if grep -rInE '(AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|-----BEGIN (RSA|OPENSSH) PRIVATE KEY-----)' \
+              --exclude-dir=.git . ; then
+            echo "Похоже на секрет в репозитории." >&2
+            exit 1
+          fi
