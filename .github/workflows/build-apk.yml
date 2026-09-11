@@ -119,17 +119,36 @@ jobs:
           if [ "$STATUS" -ne 0 ]; then
             python3 - <<'PYEOF'
           import re
-          pat = re.compile(r"error:|FAILURE|What went wrong|Caused by|e: file://")
-          out = []
-          for line in open("/tmp/build.log", errors="ignore"):
-              line = line.rstrip("\r\n")
-              if line.strip() and pat.search(line):
-                  # GitHub-flow: % -> %25, \r -> %0D, \n -> %0A
-                  msg = line.replace("%", "%25").replace("\r", "%0D")[:380]
-                  out.append(f"::error::{msg}")
-                  if len(out) >= 18:
-                      break
-          print("\n".join(out) or "::error::в логе нет строк error — смотри артефакт build-log-tail")
+          try:
+              lines = open("/tmp/build.log", errors="ignore").read().splitlines()
+          except Exception as e:
+              print(f"::error::нет build.log: {e}"); raise SystemExit(0)
+          notes, seen = [], set()
+
+          def emit(msg):
+              msg = msg.strip()[:400]
+              if msg and msg not in seen:
+                  seen.add(msg)
+                  notes.append(msg.replace("%", "%25"))
+
+          # 1) блок "What went wrong" с контекстом — там главная причина
+          for i, ln in enumerate(lines):
+              if "What went wrong" in ln:
+                  for c in lines[i + 1:i + 14]:
+                      if re.match(r"\s*(\* Try|BUILD FAILED|You can use|Get more help)", c):
+                          break
+                      emit(c)
+                  break
+          # 2) конкретные ошибки компиляции Java/Kotlin/C++
+          for ln in lines:
+              if re.search(r"error:|e: file://|Caused by:|FAILURE:|No such file|not found|Unresolved|cannot find symbol|undefined reference", ln):
+                  emit(ln)
+          # 3) если ничего не нашли — хвост лога
+          if not notes:
+              for ln in lines[-14:]:
+                  emit(ln)
+          for n in notes[:20]:
+              print(f"::error::{n}")
           PYEOF
             tail -25 /tmp/build.log > /tmp/build-tail.log
             exit "$STATUS"
