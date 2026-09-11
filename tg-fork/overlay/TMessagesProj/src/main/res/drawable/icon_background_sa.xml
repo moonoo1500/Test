@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Фон adaptive-иконки: индиго → циан вместо фирменного градиента Telegram. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:type="linear"
+        android:angle="45"
+        android:startColor="#4B3BF4"
+        android:endColor="#22C3FF" />
+</shape>

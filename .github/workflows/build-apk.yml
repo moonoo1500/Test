@@ -1,0 +1,145 @@
+name: Build Telegram AI (APK)
+
+# Собирает форк поверх официальных исходников Telegram-Android (GPL-2.0):
+# клонирует апстрим на указанный тег, налагает tg-fork/overlay + tg-fork/apply.py,
+# собирает release-APK и отдаёт его артефактом — скачать можно прямо с телефона.
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: "Тег/ветка DrKLO/Telegram"
+        default: "release-11.4.2-5469"
+        type: string
+      app_name:
+        description: "Отображаемое имя приложения"
+        default: "Telegram AI"
+        type: string
+      abi:
+        description: "ABI (arm64-v8a — для Redmi Note 15)"
+        default: "arm64-v8a"
+        type: choice
+        options: [arm64-v8a, all]
+      attach_release:
+        description: "Приложить APK к GitHub Release"
+        default: false
+        type: boolean
+  push:
+    branches: [arena/01a091e0-test]
+    paths:
+      - "tg-fork/**"
+      - ".github/workflows/build-apk.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  UPSTREAM: https://github.com/DrKLO/Telegram.git
+  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx6g -Dfile.encoding=UTF-8"
+
+jobs:
+  build:
+    name: APK (Android SDK 36 / NDK 27.2)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+
+    steps:
+      - name: Checkout форка
+        uses: actions/checkout@v4
+        with:
+          path: fork
+
+      - name: JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Клон апстрима Telegram-Android
+        run: |
+          REF="${{ inputs.upstream_ref || 'release-11.4.2-5469' }}"
+          echo "REF=$REF" >> "$GITHUB_ENV"
+          git clone --depth 1 --branch "$REF" "$UPSTREAM" tg
+          echo "коммит: $(git -C tg rev-parse --short HEAD)"
+
+      - name: Наложить патчи форка
+        run: |
+          python3 fork/tg-fork/apply.py tg \
+            --app-name "${{ inputs.app_name || 'Telegram AI' }}" \
+            --abi "${{ inputs.abi || 'arm64-v8a' }}"
+
+      - name: Проверить, что патчи не разошлись с апстримом
+        run: |
+          cd tg
+          git --no-pager diff --stat
+          test -f TMessagesProj/src/main/java/org/telegram/ui/AISettingsActivity.java
+          grep -q "case 70:" TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
+          grep -q "arm64-v8a" TMessagesProj_AppStandalone/build.gradle
+
+      - name: Android SDK —.platforms/build-tools/NDK
+        run: |
+          export SDKROOT="$ANDROID_HOME"
+          yes | "$SDKROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$SDKROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" | tail -3
+          echo "sdk.dir=$SDKROOT" > tg/local.properties
+          echo "ndk.dir=$SDKROOT/ndk/27.2.12479018" >> tg/local.properties
+          du -sh "$SDKROOT/ndk/27.2.12479018" 2>/dev/null | head -1
+
+      - name: Кэш Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ env.REF }}-${{ hashFiles('tg/gradle/wrapper/gradle-wrapper.properties', 'tg/build.gradle') }}
+          restore-keys: gradle-
+
+      - name: Сборка release-APK
+        working-directory: tg
+        run: |
+          chmod +x gradlew
+          ./gradlew :TMessagesProj_AppStandalone:assembleAfatRelease \
+            --no-daemon -x lint -Pandroid.enableR8.fullMode=false 2>&1 | tail -60
+
+      - name: Найти и подписать вывод
+        id: apk
+        run: |
+          APK=$(find tg/TMessagesProj_AppStandalone/build/outputs/apk -name "*.apk" | head -1)
+          if [ -z "$APK" ]; then
+            echo "::error::APK не найден — сборка не дошла до вывода"
+            exit 1
+          fi
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+          ls -la "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK" 2>/dev/null | head -6 || true
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$APK" 2>/dev/null \
+            | grep -E "package: name|application-label:'|native-code" | head -3
+
+      - name: Артефакт для установки на телефон
+        uses: actions/upload-artifact@v4
+        with:
+          name: Telegram-AI-${{ env.REF }}
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Прикрепить к Release (по запросу)
+        if: ${{ inputs.attach_release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "apk-${{ github.run_number }}" \
+            --title "Telegram AI · сборка #${{ github.run_number }}" \
+            --notes "Автоматическая сборка форка. APK подписан тестовым ключом апстрима — для личного использования." \
+            "${{ steps.apk.outputs.path }}#Telegram-AI.apk"
+
+      - name: Сохранить хвост лога при неудаче
+        if: failure()
+        run: |
+          find tg -name "*.log" -path "*reports*" -exec tail -40 {} \; 2>/dev/null | head -80 || true
+          echo "Достройте сборку локально: см. tg-fork/README.md"
