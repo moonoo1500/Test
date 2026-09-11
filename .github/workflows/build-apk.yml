@@ -78,17 +78,20 @@ jobs:
           # Без них Gradle падает с «No variants exist» на :jlatexmath.
           git -C tg submodule sync --recursive > /dev/null
           git -C tg submodule update --init --depth 1 --jobs 4 --recursive 2>&1 | tail -4
+          # Проверяем ровно те пути, которые перечислены в .gitmodules, —
+          # руками пути угадывать нельзя (xiph/opus, а не opus).
           missing=""
-          for d in TMessagesProj/lib/jlatexmath TMessagesProj/jni/third_party/ffmpeg \
-                   TMessagesProj/jni/third_party/libvpx TMessagesProj/jni/third_party/opus \
-                   TMessagesProj/jni/third_party/dav1d TMessagesProj/jni/third_party/libyuv \
-                   TMessagesProj/jni/third_party/openh264 TMessagesProj/jni/tlottie; do
-            [ -z "$(ls -A "tg/$d" 2>/dev/null)" ] && missing="$missing $d"
-          done
+          while IFS= read -r d; do
+            [ -z "$d" ] && continue
+            if [ ! -s "tg/$d/.git" ] && [ -z "$(ls -A "tg/$d" 2>/dev/null)" ]; then
+              missing="$missing $d"
+            fi
+          done < <(git -C tg config -f .gitmodules --get-regexp '^submodule\..*\.path$' | awk '{print $2}')
           if [ -n "$missing" ]; then
             echo "::error::пустые подмодули:$missing"
             exit 1
           fi
+          echo "подмодулей инициализировано: $(git -C tg config -f .gitmodules --get-regexp '^submodule\..*\.path$' | wc -l)"
           echo "подмодули заняли: $(du -sh tg/TMessagesProj/jni/third_party | cut -f1)"
 
       - name: Наложить патчи форка
