@@ -9,7 +9,7 @@ on:
     inputs:
       upstream_ref:
         description: "Тег/ветка DrKLO/Telegram"
-        default: "release-11.4.2-5469"
+        default: "62b56a07ca7e30e39f7fd00a6728d6bbd716ca1c"  # verified: якоря сверены именно с этим коммитом (Telegram 12.10.1)
         type: string
       app_name:
         description: "Отображаемое имя приложения"
@@ -61,10 +61,16 @@ jobs:
 
       - name: Клон апстрима Telegram-Android
         run: |
-          REF="${{ inputs.upstream_ref || 'release-11.4.2-5469' }}"
-          echo "REF=$REF" >> "$GITHUB_ENV"
-          git clone --depth 1 --branch "$REF" "$UPSTREAM" tg
-          echo "коммит: $(git -C tg rev-parse --short HEAD)"
+          REF="${{ inputs.upstream_ref || '62b56a07ca7e30e39f7fd00a6728d6bbd716ca1c' }}"
+          git init -q tg && git -C tg remote add origin "$UPSTREAM"
+          # --branch принимает только refs, а пиннинг по SHA требует fetch по коммиту.
+          git -C tg fetch -q --depth 1 origin "$REF"
+          git -C tg checkout -q FETCH_HEAD
+          SHA=$(git -C tg rev-parse HEAD)
+          VER=$(grep -m1 APP_VERSION_NAME tg/gradle.properties | cut -d= -f2)
+          echo "REF=$SHA" >> "$GITHUB_ENV"
+          echo "VERSION=$VER" >> "$GITHUB_ENV"
+          echo "клон: $SHA (Telegram $VER)"
 
       - name: Наложить патчи форка
         run: |
@@ -96,7 +102,7 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ env.REF }}-${{ hashFiles('tg/gradle/wrapper/gradle-wrapper.properties', 'tg/build.gradle') }}
+          key: gradle-${{ env.VERSION }}-${{ hashFiles('tg/gradle/wrapper/gradle-wrapper.properties', 'tg/build.gradle') }}
           restore-keys: gradle-
 
       - name: Сборка release-APK
@@ -123,7 +129,7 @@ jobs:
       - name: Артефакт для установки на телефон
         uses: actions/upload-artifact@v4
         with:
-          name: Telegram-AI-${{ env.REF }}
+          name: Telegram-AI-${{ env.VERSION }}-apk
           path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
           retention-days: 30
