@@ -109,8 +109,31 @@ jobs:
         working-directory: tg
         run: |
           chmod +x gradlew
+          set +e
           ./gradlew :TMessagesProj_AppStandalone:assembleAfatRelease \
-            --no-daemon -x lint -Pandroid.enableR8.fullMode=false 2>&1 | tail -60
+            --no-daemon -x lint -Pandroid.enableR8.fullMode=false 2>&1 | tee /tmp/build.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          # Логи Actions из внешней сети часто недоступны, поэтому ключевые строки
+          # наружу как аннотации — их видно через API без доступа к полному логу.
+          if [ "$STATUS" -ne 0 ]; then
+            python3 - <<'PYEOF'
+          import re
+          pat = re.compile(r"error:|FAILURE|What went wrong|Caused by|e: file://")
+          out = []
+          for line in open("/tmp/build.log", errors="ignore"):
+              line = line.rstrip("\r\n")
+              if line.strip() and pat.search(line):
+                  # GitHub-flow: % -> %25, \r -> %0D, \n -> %0A
+                  msg = line.replace("%", "%25").replace("\r", "%0D")[:380]
+                  out.append(f"::error::{msg}")
+                  if len(out) >= 18:
+                      break
+          print("\n".join(out) or "::error::в логе нет строк error — смотри артефакт build-log-tail")
+          PYEOF
+            tail -25 /tmp/build.log > /tmp/build-tail.log
+            exit "$STATUS"
+          fi
 
       - name: Найти и подписать вывод
         id: apk
@@ -144,8 +167,13 @@ jobs:
             --notes "Автоматическая сборка форка. APK подписан тестовым ключом апстрима — для личного использования." \
             "${{ steps.apk.outputs.path }}#Telegram-AI.apk"
 
-      - name: Сохранить хвост лога при неудаче
+      - name: Хвост сборки в артефакт (на случай недоступных логов)
         if: failure()
-        run: |
-          find tg -name "*.log" -path "*reports*" -exec tail -40 {} \; 2>/dev/null | head -80 || true
-          echo "Достройте сборку локально: см. tg-fork/README.md"
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-tail
+          path: |
+            /tmp/build-tail.log
+            tg/**/reports/**/*errors*.txt
+          if-no-files-found: ignore
+          retention-days: 7
