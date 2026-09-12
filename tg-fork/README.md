@@ -86,6 +86,20 @@ GitHub Actions клонирует апстрим на тег, налагает `
 клоне + greps по `MessagesController`/`SendMessagesHelper`/`NotificationCenter`/`UserConfig`,
 чтобы не сжигать 30-минутные прогоны на выдуманных API.
 
+### Дешёвый контур проверки перед CI
+
+`python3 tg-fork/check-imports.py` — 5 проверок за миллисекунды, без JDK:
+
+| Проверка | Какой реальный баг ловит |
+| --- | --- |
+| класс апстрима упомянут, но не импортирован | `AILlm.java:265: cannot find symbol` (50-мин прогон) |
+| лямбда в метод, где абстрактный класс | `ActionBarMenuOnItemClick is not a functional interface` |
+| вызов API, которого в пине нет | `startActivity`, `getView`, `UserInstance.currentAccount` |
+
+Комментарии и строковые литералы вырезаются перед поиском — иначе матчит
+собственные пояснения (ложняк был ровно на фразе «нет startActivity(Intent)» в `//`).
+Вызывается из `apply.py` как обязательный шаг, то есть и в CI, и локально.
+
 ## Сборка вручную (если появится компьютер)
 
 ```bash

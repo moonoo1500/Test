@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -124,6 +125,18 @@ def limit_abi(root: Path, abi: str) -> None:
     edit(root, STANDALONE_GRADLE, fn)
 
 
+def check_imports() -> None:
+    """Статическая проверка до сборки: ловит то, на что компилятор потратил бы 3-50 минут."""
+    script = HERE / "check-imports.py"
+    if not script.exists():
+        raise PatchError(f"нет {script} — проверка импортов обязательна")
+    proc = subprocess.run([sys.executable, str(script)], capture_output=True, text=True)
+    tail = "\n".join(proc.stdout.strip().splitlines()[-6:])
+    if proc.returncode != 0:
+        raise PatchError("статическая проверка кода не пройдена:\n" + tail + "\n" + proc.stderr.strip())
+    print("  • check-imports: " + (tail.splitlines()[-1] if tail else "ok"))
+
+
 def verify(root: Path) -> None:
     checks = {
         SETTINGS: ["R.drawable.settings_ai", "case 70:", "new AISettingsActivity()"],
@@ -142,6 +155,7 @@ def verify(root: Path) -> None:
             if needle not in body:
                 raise PatchError(f"проверка не пройдена: в {rel} нет «{needle}»")
     print(f"  ✓ все {len(checks)} контрольных точек на месте")
+    check_imports()
 
 
 def main() -> int:
