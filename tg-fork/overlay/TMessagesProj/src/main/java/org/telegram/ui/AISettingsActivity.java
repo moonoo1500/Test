@@ -463,9 +463,16 @@ public class AISettingsActivity extends BaseFragment {
                         String first = sb.toString().split("\n")[0].trim();
                         // Отдаём ссылку самому Telegram: он умеет импортировать прокси по tg://-ссылке.
                         try {
+                            Activity parent = getParentActivity();
+                            if (parent == null) {
+                                toast("Экран уже закрыт");
+                                return;
+                            }
                             android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(first));
-                            intent.setPackage(getParentActivity().getPackageName());
-                            startActivity(intent);
+                            // У BaseFragment нет startActivity(Intent) — есть только startActivityForResult,
+                            // поэтому идём через активность (и ограничиваем её же пакетом).
+                            intent.setPackage(parent.getPackageName());
+                            parent.startActivity(intent);
                         } catch (Exception e) {
                             FileLog.e(e);
                             toast("Не получилось открыть ссылку");
