@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Монохромный слой (themed icons в Android 13+): самолёк с искрой. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group android:scaleX="0.42" android:scaleY="0.42" android:translateX="31.3" android:translateY="31.3">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M12,54 L96,12 L64,88 L48,64 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M44,66 L20,58 L44,50 L46,58 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M30,92 L33,84 L29,76 L21,79 L25,87 L21,95 Z" />
+    </group>
+</vector>

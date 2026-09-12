@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MarkNote — Markdown-редактор с живым предпросмотром</title>
+    <meta
+      name="description"
+      content="Локальный Markdown-редактор: живой предпросмотр, тёмная тема, автосохранение в localStorage. Без зависимостей и без сборки."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%236d5efc'/%3E%3Cpath d='M8 22V10l5 6 5-6v12' stroke='white' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M23 10v8m0 0 3-3m-3 3-3-3' stroke='white' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar" id="sidebar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">M↓</span>
+          <span class="brand-name">MarkNote</span>
+        </div>
+
+        <div class="sidebar-actions">
+          <button type="button" class="btn btn-primary" id="new-note" title="Новая заметка (Ctrl+Alt+N)">
+            + Новая
+          </button>
+          <button type="button" class="btn btn-ghost" id="import-note" title="Импортировать .md">
+            ⭱ Файл
+          </button>
+          <input type="file" id="file-input" accept=".md,.markdown,.txt" hidden />
+        </div>
+
+        <label class="search">
+          <span aria-hidden="true">⌕</span>
+          <input type="search" id="search" placeholder="Поиск по заметкам…" aria-label="Поиск по заметкам" />
+        </label>
+
+        <nav class="notes" id="notes" aria-label="Список заметок"></nav>
+
+        <div class="sidebar-footer">
+          <button type="button" class="btn btn-ghost btn-block" id="export-note" title="Скачать .md">
+            ⭳ Экспорт .md
+          </button>
+          <button type="button" class="btn btn-ghost btn-block" id="copy-html" title="Скопировать HTML">
+            ⧉ Копировать HTML
+          </button>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="toolbar">
+          <button type="button" class="icon-btn" id="toggle-sidebar" title="Панель заметок" aria-label="Показать список заметок">☰</button>
+          <span class="divider" aria-hidden="true"></span>
+
+          <div class="format-group" role="toolbar" aria-label="Форматирование">
+            <button type="button" class="icon-btn" data-wrap="**" title="Жирный (Ctrl+B)"><b>B</b></button>
+            <button type="button" class="icon-btn" data-wrap="*" title="Курсив (Ctrl+I)"><i>I</i></button>
+            <button type="button" class="icon-btn" data-wrap="`" title="Код (Ctrl+E)">&lt;/&gt;</button>
+            <button type="button" class="icon-btn" data-wrap="~~" title="Зачёркнутый"><s>S</s></button>
+            <span class="divider" aria-hidden="true"></span>
+            <button type="button" class="icon-btn" data-prefix="# " title="Заголовок">H1</button>
+            <button type="button" class="icon-btn" data-prefix="## " title="Подзаголовок">H2</button>
+            <button type="button" class="icon-btn" data-prefix="- " title="Список">≡</button>
+            <button type="button" class="icon-btn" data-prefix="> " title="Цитата">❝</button>
+            <button type="button" class="icon-btn" id="insert-link" title="Ссылка (Ctrl+K)">🔗</button>
+            <button type="button" class="icon-btn" id="insert-table" title="Таблица">▦</button>
+          </div>
+
+          <span class="spacer"></span>
+
+          <div class="segmented" role="group" aria-label="Режим просмотра">
+            <button type="button" class="seg" data-view="edit">Текст</button>
+            <button type="button" class="seg is-active" data-view="split">Раздел</button>
+            <button type="button" class="seg" data-view="preview">Вид</button>
+          </div>
+
+          <button type="button" class="icon-btn" id="toggle-theme" title="Сменить тему" aria-label="Переключить тему">◐</button>
+        </header>
+
+        <section class="panes" id="panes" data-view="split">
+          <div class="pane pane-edit">
+            <textarea
+              id="editor"
+              spellcheck="false"
+              placeholder="# Начните печатать…&#10;&#10;Поддерживаются заголовки, **жирный**, *курсив*, `код`, списки, цитаты, таблицы и ссылки."
+              aria-label="Редактор Markdown"
+            ></textarea>
+          </div>
+          <div class="pane pane-preview">
+            <article class="markdown-body" id="preview" aria-live="polite"></article>
+          </div>
+        </section>
+
+        <footer class="statusbar">
+          <span id="status-note">—</span>
+          <span class="dot" aria-hidden="true"></span>
+          <span id="status-words">0 слов</span>
+          <span class="dot" aria-hidden="true"></span>
+          <span id="status-chars">0 знаков</span>
+          <span class="dot" aria-hidden="true"></span>
+          <span id="status-read">пусто</span>
+          <span class="spacer"></span>
+          <span id="status-save" class="save-state">сохранено</span>
+        </footer>
+      </main>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

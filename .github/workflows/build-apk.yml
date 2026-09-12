@@ -1,0 +1,203 @@
+name: Build Telegram AI (APK)
+
+# Собирает форк поверх официальных исходников Telegram-Android (GPL-2.0):
+# клонирует апстрим на указанный тег, налагает tg-fork/overlay + tg-fork/apply.py,
+# собирает release-APK и отдаёт его артефактом — скачать можно прямо с телефона.
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: "Тег/ветка DrKLO/Telegram"
+        default: "62b56a07ca7e30e39f7fd00a6728d6bbd716ca1c"  # verified: якоря сверены именно с этим коммитом (Telegram 12.10.1)
+        type: string
+      app_name:
+        description: "Отображаемое имя приложения"
+        default: "Telegram AI"
+        type: string
+      abi:
+        description: "ABI (arm64-v8a — для Redmi Note 15)"
+        default: "arm64-v8a"
+        type: choice
+        options: [arm64-v8a, all]
+      attach_release:
+        description: "Приложить APK к GitHub Release"
+        default: false
+        type: boolean
+  push:
+    branches: [arena/01a091e0-test]
+    paths:
+      - "tg-fork/**"
+      - ".github/workflows/build-apk.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  UPSTREAM: https://github.com/DrKLO/Telegram.git
+  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx6g -Dfile.encoding=UTF-8"
+
+jobs:
+  build:
+    name: APK (Android SDK 36 / NDK 27.2)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+
+    steps:
+      - name: Checkout форка
+        uses: actions/checkout@v4
+        with:
+          path: fork
+
+      - name: JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Клон апстрима Telegram-Android
+        run: |
+          REF="${{ inputs.upstream_ref || '62b56a07ca7e30e39f7fd00a6728d6bbd716ca1c' }}"
+          git init -q tg && git -C tg remote add origin "$UPSTREAM"
+          # --branch принимает только refs, а пиннинг по SHA требует fetch по коммиту.
+          git -C tg fetch -q --depth 1 origin "$REF"
+          git -C tg checkout -q FETCH_HEAD
+          SHA=$(git -C tg rev-parse HEAD)
+          VER=$(grep -m1 APP_VERSION_NAME tg/gradle.properties | cut -d= -f2)
+          echo "REF=$SHA" >> "$GITHUB_ENV"
+          echo "VERSION=$VER" >> "$GITHUB_ENV"
+          echo "клон: $SHA (Telegram $VER)"
+
+      - name: Подмодули апстрима (ffmpeg/libvpx/opus/jlatexmath/…)
+        run: |
+          # На master Telegram вынес нативные либы и jlatexmath в подмодули.
+          # Без них Gradle падает с «No variants exist» на :jlatexmath.
+          git -C tg submodule sync --recursive > /dev/null
+          git -C tg submodule update --init --depth 1 --jobs 4 --recursive 2>&1 | tail -4
+          # Проверяем ровно те пути, которые перечислены в .gitmodules, —
+          # руками пути угадывать нельзя (xiph/opus, а не opus).
+          missing=""
+          while IFS= read -r d; do
+            [ -z "$d" ] && continue
+            if [ ! -s "tg/$d/.git" ] && [ -z "$(ls -A "tg/$d" 2>/dev/null)" ]; then
+              missing="$missing $d"
+            fi
+          done < <(git -C tg config -f .gitmodules --get-regexp '^submodule\..*\.path$' | awk '{print $2}')
+          if [ -n "$missing" ]; then
+            echo "::error::пустые подмодули:$missing"
+            exit 1
+          fi
+          echo "подмодулей инициализировано: $(git -C tg config -f .gitmodules --get-regexp '^submodule\..*\.path$' | wc -l)"
+          echo "подмодули заняли: $(du -sh tg/TMessagesProj/jni/third_party | cut -f1)"
+
+      - name: Наложить патчи форка
+        run: |
+          python3 fork/tg-fork/apply.py tg \
+            --app-name "${{ inputs.app_name || 'Telegram AI' }}" \
+            --abi "${{ inputs.abi || 'arm64-v8a' }}"
+
+      - name: Проверить, что патчи не разошлись с апстримом
+        run: |
+          cd tg
+          git --no-pager diff --stat
+          test -f TMessagesProj/src/main/java/org/telegram/ui/AISettingsActivity.java
+          grep -q "case 70:" TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
+          grep -q "arm64-v8a" TMessagesProj_AppStandalone/build.gradle
+
+      - name: Android SDK —.platforms/build-tools/NDK
+        run: |
+          export SDKROOT="$ANDROID_HOME"
+          yes | "$SDKROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$SDKROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" | tail -3
+          echo "sdk.dir=$SDKROOT" > tg/local.properties
+          echo "ndk.dir=$SDKROOT/ndk/27.2.12479018" >> tg/local.properties
+          du -sh "$SDKROOT/ndk/27.2.12479018" 2>/dev/null | head -1
+
+      - name: Кэш Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ env.VERSION }}-${{ hashFiles('tg/gradle/wrapper/gradle-wrapper.properties', 'tg/build.gradle') }}
+          restore-keys: gradle-
+
+      - name: Быстрая проверка javac (до нативной сборки)
+        # :TMessagesProj:compileReleaseJavaWithJavac компилирует ВСЕ файлы патча
+        # за ~5 минут вместо ~50: сначала ловим ошибки own-code, только потом ffmpeg/libvpx.
+        run: |
+          cd tg && chmod +x gradlew
+          set +e
+          ./gradlew :TMessagesProj:compileReleaseJavaWithJavac --no-daemon -x lint 2>&1 | tee /tmp/javac.log
+          ST=${PIPESTATUS[0]}
+          set -e
+          if [ "$ST" -ne 0 ]; then
+            python3 ../fork/tg-fork/ci-errors.py /tmp/javac.log
+            exit "$ST"
+          fi
+          echo "javac-этап чист: код форка проходит компиляцию"
+
+      - name: Сборка release-APK
+        working-directory: tg
+        run: |
+          chmod +x gradlew
+          set +e
+          ./gradlew :TMessagesProj_AppStandalone:assembleAfatRelease \
+            --no-daemon -x lint -Pandroid.enableR8.fullMode=false 2>&1 | tee /tmp/build.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          # Логи Actions из внешней сети часто недоступны, поэтому ключевые строки
+          # наружу как аннотации — их видно через API без доступа к полному логу.
+          if [ "$STATUS" -ne 0 ]; then
+            python3 ../fork/tg-fork/ci-errors.py /tmp/build.log
+            tail -25 /tmp/build.log > /tmp/build-tail.log
+            exit "$STATUS"
+          fi
+
+      - name: Найти и подписать вывод
+        id: apk
+        run: |
+          APK=$(find tg/TMessagesProj_AppStandalone/build/outputs/apk -name "*.apk" | head -1)
+          if [ -z "$APK" ]; then
+            echo "::error::APK не найден — сборка не дошла до вывода"
+            exit 1
+          fi
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+          ls -la "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK" 2>/dev/null | head -6 || true
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$APK" 2>/dev/null \
+            | grep -E "package: name|application-label:'|native-code" | head -3
+
+      - name: Артефакт для установки на телефон
+        uses: actions/upload-artifact@v4
+        with:
+          name: Telegram-AI-${{ env.VERSION }}-apk
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Прикрепить к Release (по запросу)
+        if: ${{ inputs.attach_release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "apk-${{ github.run_number }}" \
+            --title "Telegram AI · сборка #${{ github.run_number }}" \
+            --notes "Автоматическая сборка форка. APK подписан тестовым ключом апстрима — для личного использования." \
+            "${{ steps.apk.outputs.path }}#Telegram-AI.apk"
+
+      - name: Хвост сборки в артефакт (на случай недоступных логов)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-tail
+          path: |
+            /tmp/build-tail.log
+            tg/**/reports/**/*errors*.txt
+          if-no-files-found: ignore
+          retention-days: 7
