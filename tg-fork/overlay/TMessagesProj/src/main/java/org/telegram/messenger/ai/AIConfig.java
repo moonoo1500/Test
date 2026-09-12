@@ -55,7 +55,7 @@ public class AIConfig {
     }
 
     private AIConfig(int account) {
-        Context ctx = ApplicationLoader.getApplicationContext();
+        Context ctx = ApplicationLoader.applicationContext;
         prefs = ctx.getSharedPreferences("ai_features_" + account, Context.MODE_PRIVATE);
     }
 

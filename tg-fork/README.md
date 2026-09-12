@@ -69,6 +69,23 @@ GitHub Actions клонирует апстрим на тег, налагает `
 6. **Юридический нюанс РФ.** Мы не распространяем серверы обхода и не включаем готовый
    список прокси — только UI поверх штатной функции Telegram. Список по URL добавляешь сам.
 
+## Что поймала компиляция (и почему CI здесь обязателен)
+
+Локально собрать Telegram нельзя (нет JDK/SDK/NDK, а maven и dl.google.com отрезаны network-политикой
+песочницы), поэтому единственный компилятор — CI. Он нашёл то, что grep по исходникам
+не показывает:
+
+| Симптом | Причина | Fix |
+| --- | --- | --- |
+| `ActionBarMenuOnItemClick is not a functional interface` | в Telegram это **абстрактный класс**, а не лямбда-интерфейс | анонимный подкласс, как в `LiteModeSettingsActivity` |
+| `getView()` у `BaseFragment` | метода нет — есть `fragmentView`/`createView` | проверка на `getParentActivity() != null` |
+| `ApplicationLoader.getApplicationContext()` | метода нет, есть **публичное поле** `applicationContext` | обращение через поле (так делает сам `UserConfig`) |
+| пин на тег `release-11.4.2` | там другой фреймворк настроек | пин на verified-коммит `master` + `apply.py` падает, если якоря уехали |
+
+Перед каждым пушем locals: `java-parser` (синтаксис всех 5 файлов) + `apply.py` на свежем
+клоне + greps по `MessagesController`/`SendMessagesHelper`/`NotificationCenter`/`UserConfig`,
+чтобы не сжигать 30-минутные прогоны на выдуманных API.
+
 ## Сборка вручную (если появится компьютер)
 
 ```bash

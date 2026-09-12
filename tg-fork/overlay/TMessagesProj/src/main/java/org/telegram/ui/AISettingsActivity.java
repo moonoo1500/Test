@@ -45,8 +45,15 @@ public class AISettingsActivity extends BaseFragment {
         actionBar.setBackButtonImage(org.telegram.messenger.R.drawable.ic_ab_back);
         actionBar.setAllowOverlayTitle(true);
         actionBar.setTitle("ИИ-функции");
-        actionBar.setActionBarMenuOnItemClick(id -> {
-            if (id == -1) finishFragment();
+        // ActionBarMenuOnItemClick — абстрактный класс, а не функциональный интерфейс:
+        // лямбда тут не компилируется, только анонимный подкласс.
+        actionBar.setActionBarMenuOnItemClick(new org.telegram.ui.ActionBar.ActionBar.ActionBarMenuOnItemClick() {
+            @Override
+            public void onItemClick(int id) {
+                if (id == -1) {
+                    finishFragment();
+                }
+            }
         });
 
         uiContext = context;
@@ -395,7 +402,7 @@ public class AISettingsActivity extends BaseFragment {
     private void testKey() {
         toast("Отправляю тестовый запрос…");
         AILlm.complete("Ответь ровно одной фразой: ключ работает.", null, "ping", (text, error) -> {
-            if (getView() == null) return;
+            if (getParentActivity() == null) return;   // экран закрыли — toast() и так null-проверяется
             if (error != null) {
                 new AlertDialog.Builder(getParentActivity())
                     .setTitle("Провайдер ответил ошибкой")
