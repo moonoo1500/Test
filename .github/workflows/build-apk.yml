@@ -127,6 +127,21 @@ jobs:
           key: gradle-${{ env.VERSION }}-${{ hashFiles('tg/gradle/wrapper/gradle-wrapper.properties', 'tg/build.gradle') }}
           restore-keys: gradle-
 
+      - name: Быстрая проверка javac (до нативной сборки)
+        # :TMessagesProj:compileReleaseJavaWithJavac компилирует ВСЕ файлы патча
+        # за ~5 минут вместо ~50: сначала ловим ошибки own-code, только потом ffmpeg/libvpx.
+        run: |
+          cd tg && chmod +x gradlew
+          set +e
+          ./gradlew :TMessagesProj:compileReleaseJavaWithJavac --no-daemon -x lint 2>&1 | tee /tmp/javac.log
+          ST=${PIPESTATUS[0]}
+          set -e
+          if [ "$ST" -ne 0 ]; then
+            python3 ../fork/tg-fork/ci-errors.py /tmp/javac.log
+            exit "$ST"
+          fi
+          echo "javac-этап чист: код форка проходит компиляцию"
+
       - name: Сборка release-APK
         working-directory: tg
         run: |
@@ -139,39 +154,7 @@ jobs:
           # Логи Actions из внешней сети часто недоступны, поэтому ключевые строки
           # наружу как аннотации — их видно через API без доступа к полному логу.
           if [ "$STATUS" -ne 0 ]; then
-            python3 - <<'PYEOF'
-          import re
-          try:
-              lines = open("/tmp/build.log", errors="ignore").read().splitlines()
-          except Exception as e:
-              print(f"::error::нет build.log: {e}"); raise SystemExit(0)
-          notes, seen = [], set()
-
-          def emit(msg):
-              msg = msg.strip()[:400]
-              if msg and msg not in seen:
-                  seen.add(msg)
-                  notes.append(msg.replace("%", "%25"))
-
-          # 1) блок "What went wrong" с контекстом — там главная причина
-          for i, ln in enumerate(lines):
-              if "What went wrong" in ln:
-                  for c in lines[i + 1:i + 14]:
-                      if re.match(r"\s*(\* Try|BUILD FAILED|You can use|Get more help)", c):
-                          break
-                      emit(c)
-                  break
-          # 2) конкретные ошибки компиляции Java/Kotlin/C++
-          for ln in lines:
-              if re.search(r"error:|e: file://|Caused by:|FAILURE:|No such file|not found|Unresolved|cannot find symbol|undefined reference", ln):
-                  emit(ln)
-          # 3) если ничего не нашли — хвост лога
-          if not notes:
-              for ln in lines[-14:]:
-                  emit(ln)
-          for n in notes[:20]:
-              print(f"::error::{n}")
-          PYEOF
+            python3 ../fork/tg-fork/ci-errors.py /tmp/build.log
             tail -25 /tmp/build.log > /tmp/build-tail.log
             exit "$STATUS"
           fi
