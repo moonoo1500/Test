@@ -13,6 +13,8 @@ import * as THREE from 'three';
 import { MaterialLibrary } from '../src/render/materials';
 import { createBoxGeometry, createPropGeometry, ensureColorAttribute } from '../src/render/geometry';
 import { PROPS } from '../src/world/props';
+import { WORLD_TYPES, type MatKey } from '../src/world/types';
+import { generateChunk } from '../src/world/generate';
 
 class FakeGradient {
   addColorStop(): void {
@@ -120,6 +122,22 @@ describe('step 10b · procedural textures', () => {
   it('reuses materials instead of creating new ones', () => {
     const lib = new MaterialLibrary();
     expect(lib.get('wood')).toBe(lib.get('wood'));
+    lib.dispose();
+  });
+
+  it('knows every material used by the generators', () => {
+    const lib = new MaterialLibrary();
+    const used = new Set<string>();
+    for (const type of WORLD_TYPES) {
+      for (const seed of ['a', 'b', 'c']) {
+        const chunk = generateChunk(type, seed, 0, 0);
+        for (const box of chunk.boxes) used.add(box.mat);
+      }
+    }
+    expect(used.size).toBeGreaterThan(10);
+    for (const key of used) {
+      expect(() => lib.get(key as MatKey)).not.toThrow();
+    }
     lib.dispose();
   });
 });
