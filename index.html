@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>LIMINAL // DREAMCORE EXPLORER — Сид-Генератор Миров (3D & 2D Аркада)</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- 3D WebGL & 2D Pixel Arcade Viewport Container -->
+  <div id="viewport-container"></div>
+
+  <!-- VHS Scanline & Portal Transition Overlays -->
+  <div class="vhs-overlay"></div>
+  <div id="vhs-transition-overlay"></div>
+  <div class="center-reticle"></div>
+
+  <!-- Top HUD Bar -->
+  <header class="hud-top-bar">
+    <div class="hud-cluster">
+      <span class="seed-badge">СИД: <span id="hud-seed-val">LIMINAL-1997</span></span>
+      <span class="biome-badge" id="hud-biome-val">Уровень 0: Жёлтый Комплекс</span>
+      <span class="stat-meter">
+        🧠 <span class="stat-bar"><span id="hud-sanity-fill" class="stat-fill sanity"></span></span>
+      </span>
+      <span class="stat-meter">
+        ⚡ <span class="stat-bar"><span id="hud-stamina-fill" class="stat-fill stamina"></span></span>
+      </span>
+      <span id="hud-vhs-val" style="font-size:11px;color:#f2da72;">📼 0</span>
+    </div>
+
+    <div class="hud-cluster">
+      <button id="btn-hud-mode" class="hud-btn accent" title="Переключить 3D Объёмный / 2D Аркада [M]">
+        🧊 Режим: 3D Объёмный
+      </button>
+      <button id="btn-hud-cam" class="hud-btn" title="Переключить вид от 1-го / 3-го лица [V]">
+        👁 Камера: 1-е лицо
+      </button>
+      <button id="btn-hud-seed" class="hud-btn" title="Выбрать Сид или Биом">
+        🎲 Сид / Мир
+      </button>
+      <button id="btn-hud-journal" class="hud-btn" title="Дневник найденных VHS-кассет">
+        📓 Дневник
+      </button>
+      <button id="btn-hud-bugcheck" class="hud-btn" title="Запустить 10-шаговую проверку на баги">
+        🛠 Тест 10 шагов
+      </button>
+      <button id="btn-hud-audio" class="hud-btn" title="Вкл/Выкл процедурный звук">
+        🔊 Звук
+      </button>
+    </div>
+  </header>
+
+  <!-- Minimap Radar & FPS Telemetry -->
+  <aside class="minimap-box">
+    <canvas id="minimap-canvas" width="96" height="96"></canvas>
+    <div id="hud-fps-val" class="fps-telemetry">60 FPS • X:0.0 Z:0.0</div>
+  </aside>
+
+  <!-- Toast & Context Interaction Prompt -->
+  <div id="hud-toast" class="hud-toast"></div>
+  <div id="hud-interact-prompt" class="hud-interact-prompt">Взаимодействовать [E]</div>
+
+  <!-- Mobile Touch Controls: Right Camera Swipe Pad + Left Virtual Analog Joystick + Action Buttons -->
+  <div id="touch-look-zone" aria-label="Сенсорная зона поворота камеры"></div>
+
+  <div id="touch-joystick-zone" class="touch-joystick-zone" aria-label="Виртуальный джойстик движения">
+    <div id="touch-joystick-knob" class="touch-joystick-knob"></div>
+    <span class="touch-joystick-ring-hint">ДВИЖЕНИЕ / БЕГ</span>
+  </div>
+
+  <div class="mobile-action-pad" aria-label="Кнопки управления для телефона">
+    <button id="mob-btn-interact" class="mob-action-btn primary-interact">
+      <span>✋</span>
+      <span>ДЕЙСТВИЕ</span>
+    </button>
+    <button id="mob-btn-jump" class="mob-action-btn">
+      <span>⬆</span>
+      <span>ПРЫЖОК</span>
+    </button>
+    <button id="mob-btn-flashlight" class="mob-action-btn active-toggle">
+      <span>🔦</span>
+      <span>ФОНАРИК</span>
+    </button>
+    <button id="mob-btn-sprint" class="mob-action-btn">
+      <span>🏃</span>
+      <span>БЕГ</span>
+    </button>
+    <button id="mob-btn-crouch" class="mob-action-btn">
+      <span>🧎</span>
+      <span>ПРИСЕД</span>
+    </button>
+    <button id="mob-btn-random-warp" class="mob-action-btn">
+      <span>🌀</span>
+      <span>НОВЫЙ СИД</span>
+    </button>
+  </div>
+
+  <!-- World Seed & Mode Launcher Modal -->
+  <div id="launcher-modal" class="modal-backdrop">
+    <div class="modal-window">
+      <div class="modal-header">
+        <div>
+          <h1 class="modal-title">LIMINAL // DREAMCORE EXPLORER</h1>
+          <p class="modal-subtitle">
+            Процедурные лиминальные миры по Сиду • 3D Объёмный &amp; 2D Пиксельная Аркада • Сенсорное управление
+          </p>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <label class="form-label" for="seed-input">1. ВВЕДИТЕ СИД МИРА (ИЛИ ВЫБЕРИТЕ БЫСТРЫЙ ПРЕСЕТ):</label>
+        <div class="seed-row">
+          <input id="seed-input" class="text-input" type="text" value="LIMINAL-1997" placeholder="Например: DREAM-MEADOW-77" />
+          <button id="btn-random-seed" class="hud-btn accent" type="button">🎲 Случайный Сид</button>
+        </div>
+        <div class="preset-chips">
+          <button type="button" class="preset-chip" data-preset-seed="BACKROOMS-1997" data-preset-biome="YELLOW_COMPLEX">
+            🏢 Уровень 0: Жёлтый Комплекс
+          </button>
+          <button type="button" class="preset-chip" data-preset-seed="DREAM-MEADOW-77" data-preset-biome="DREAMCORE_MEADOW">
+            🌿 Поляна Снов (Домики и Глаза в небе)
+          </button>
+          <button type="button" class="preset-chip" data-preset-seed="POOLROOMS-37" data-preset-biome="POOLROOMS">
+            🌊 Аква-Комплекс (Poolrooms)
+          </button>
+          <button type="button" class="preset-chip" data-preset-seed="ATRIUM-MALL-97" data-preset-biome="DEAD_MALL">
+            🌴 Пустой ТЦ 1997 (Vaporwave)
+          </button>
+          <button type="button" class="preset-chip" data-preset-seed="SUBURBIA-NIGHT-04" data-preset-biome="ETERNAL_SUBURBIA">
+            🏮 Ночной Пригород в Тумане
+          </button>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <label class="form-label">2. ВЫБЕРИТЕ ТИП ИГРЫ (МОЖНО ПЕРЕКЛЮЧАТЬ В ЛЮБОЙ МОМЕНТ):</label>
+        <div class="mode-cards-grid">
+          <button type="button" class="mode-card active" data-select-mode="3D">
+            <div class="mode-card-title">🧊 ОБЪЁМНЫЙ (3D WebGL)</div>
+            <div class="mode-card-desc">
+              Полноценный 3D-мир с видом от 1-го и 3-го лица (анимированный человек), объёмным туманом, рельефом холмов, водой и динамическим светом.
+            </div>
+          </button>
+          <button type="button" class="mode-card" data-select-mode="2D">
+            <div class="mode-card-title">👾 АРКАДА (2D Пиксельный)</div>
+            <div class="mode-card-desc">
+              Ретро-пиксельная 2.5D аркада на том же самом сиде: пиксельный человек, конус света фонарика, волны на воде и ЭЛТ-развёртка.
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <div class="form-section" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <label class="form-label" for="biome-select">АРХЕТИП МИРА:</label>
+          <select id="biome-select" class="select-input" style="width:100%;">
+            <option value="AUTO">Автоматически по Сиду</option>
+            <option value="YELLOW_COMPLEX">Здание: Жёлтый Комплекс</option>
+            <option value="DREAMCORE_MEADOW">Поляна: Холмы Снов (Dreamcore)</option>
+            <option value="POOLROOMS">Бассейны: Poolrooms (Уровень 37)</option>
+            <option value="DEAD_MALL">Здание: Заброшенный ТЦ 1997</option>
+            <option value="ETERNAL_SUBURBIA">Улица: Туманный Пригород</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label" for="quality-select">ОПТИМИЗАЦИЯ И ГРАФИКА:</label>
+          <select id="quality-select" class="select-input" style="width:100%;">
+            <option value="RETRO">Ретро PSX (Пиксельная фильтрация, Макс. FPS)</option>
+            <option value="MEDIUM" selected>Стандарт (Баланс чёткости и 60 FPS)</option>
+            <option value="HIGH">Высокое (Сглаживание, макс. детализация)</option>
+          </select>
+        </div>
+      </div>
+
+      <button id="btn-start-world" class="btn-primary-launch" type="button">
+        ВОЙТИ В ЛИМИНАЛЬНЫЙ МИР →
+      </button>
+    </div>
+  </div>
+
+  <!-- VHS Memory Journal Modal -->
+  <div id="journal-modal" class="modal-backdrop hidden">
+    <div class="modal-window">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title">📓 ДНЕВНИК НАЙДЕННЫХ VHS-ЗАПИСЕЙ</h2>
+          <p class="modal-subtitle">Записи сохраняются между переходами по разным Сидам</p>
+        </div>
+        <button id="btn-close-journal" class="hud-btn" type="button">✖ Закрыть</button>
+      </div>
+      <div id="journal-entries-list">
+        <div class="empty-journal">Пока не найдено ни одной VHS-кассеты. Ищите жёлтые светящиеся кассеты в мирах!</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 10-Step Bug Check Modal -->
+  <div id="bugcheck-modal" class="modal-backdrop hidden">
+    <div class="modal-window">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title">🛠 10-ШАГОВАЯ ПРОВЕРКА НА БАГИ</h2>
+          <p class="modal-subtitle">Автоматическое тестирование всех подсистем движка в реальном времени</p>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button id="btn-rerun-bugcheck" class="hud-btn accent" type="button">↻ Повторить</button>
+          <button id="btn-close-bugcheck" class="hud-btn" type="button">✖ Закрыть</button>
+        </div>
+      </div>
+      <div id="bugcheck-results"></div>
+    </div>
+  </div>
+
+  <!-- Scripts (Standalone Local Bundle — Zero External Network Requests Needed) -->
+  <script src="vendor/three.min.js"></script>
+  <script src="js/prng.js"></script>
+  <script src="js/textures.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/world_gen.js"></script>
+  <script src="js/physics.js"></script>
+  <script src="js/interaction.js"></script>
+  <script src="js/renderer_3d.js"></script>
+  <script src="js/renderer_2d.js"></script>
+  <script src="js/input.js"></script>
+  <script src="js/diagnostics.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    window.addEventListener('DOMContentLoaded', function () {
+      window.liminalApp = new window.LiminalMain.LiminalExplorerApp();
+      window.liminalApp.init();
+    });
+  </script>
+</body>
+</html>

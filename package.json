@@ -1,0 +1,11 @@
+{
+  "name": "liminal-dreamcore-explorer",
+  "version": "1.0.0",
+  "description": "Procedural Liminal & Dreamcore World Explorer (Volumetric 3D & Pixel-Art 2D Arcade) with Mobile Touch Controls",
+  "main": "js/main.js",
+  "scripts": {
+    "test": "node tests/bug_check_10_steps.js",
+    "bugcheck": "node tests/bug_check_10_steps.js"
+  },
+  "license": "MIT"
+}
