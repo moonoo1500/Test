@@ -140,9 +140,10 @@ function makeStubContext(): unknown {
   return new Proxy({}, handler);
 }
 
-/** Installs the stub on every canvas of the current document. */
-export function installWebGLStub(): void {
-  Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+/** Installs the stub on every canvas of the given window (defaults to the global one). */
+export function installWebGLStub(target?: { HTMLCanvasElement: { prototype: object } }): void {
+  const scope = target ?? (globalThis as unknown as { HTMLCanvasElement: { prototype: object } });
+  Object.defineProperty(scope.HTMLCanvasElement.prototype, 'getContext', {
     configurable: true,
     value: function getContext(this: HTMLCanvasElement, kind: string) {
       if (typeof kind === 'string' && kind.includes('webgl')) return makeStubContext();

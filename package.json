@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run typecheck && npm run test && npm run build"
+    "check": "npm run typecheck && npm run build:single && npm run test && npm run build",
+    "build:single": "vite build --config vite.config.single.ts && node scripts/inline-single.mjs dist-single liminal-drift.html"
   },
   "dependencies": {
     "three": "^0.186.1"
