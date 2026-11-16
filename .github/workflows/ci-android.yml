@@ -34,11 +34,12 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
+          cache-dependency-path: tools/requirements-ci.txt
 
       - name: Install Python QA tools
         run: |
           python -m pip install --upgrade pip
-          pip install gdtoolkit==4.5.0 pillow fonttools
+          pip install -r tools/requirements-ci.txt
 
       - name: Verify localization parity & font glyph coverage
         run: python tools/check_localization.py

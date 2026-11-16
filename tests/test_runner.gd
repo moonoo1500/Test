@@ -23,7 +23,12 @@ func _assert_true(cond: bool, msg: String) -> void:
 func _run_all_tests() -> void:
 	_test_localization()
 	_test_settings_and_progress_persistence()
-	_test_main_scene_smoke()
+	_test_greedy_mesher_winding_and_colliders()
+	await _test_chunk_boundary_operations()
+	await _test_structural_collapse_and_detachment()
+	await _test_fire_and_cryo_extinguish()
+	await _test_serializer_round_trip()
+	await _test_main_scene_smoke()
 
 	print("=== Test Summary: %d passed, %d failed ===" % [_passed, _failed])
 	quit(0 if _failed == 0 else 1)
@@ -76,6 +81,161 @@ func _test_settings_and_progress_persistence() -> void:
 
 	gs.custom_settings_path = ""
 	gs.custom_progress_path = ""
+
+
+func _test_greedy_mesher_winding_and_colliders() -> void:
+	# 1. Single isolated voxel: must produce 6 quads = 12 tris, ALL matching Godot CW front-face winding
+	var padded := PackedByteArray()
+	padded.resize(VoxelMesher.PADDED_SIZE * VoxelMesher.PADDED_SIZE * VoxelMesher.PADDED_SIZE)
+	padded[VoxelMesher.padded_index(4, 4, 4)] = VoxelMaterials.Id.BRICK
+	var geom := VoxelMesher.build_chunk_geometry(padded)
+	var verts: PackedVector3Array = geom["verts"]
+	var norms: PackedVector3Array = geom["norms"]
+	var indices: PackedInt32Array = geom["indices"]
+	_assert_true(indices.size() == 36, "Single voxel produces exactly 12 triangles (36 indices)")
+
+	var all_winding_ok := true
+	for ti in range(0, indices.size(), 3):
+		var v0 := verts[indices[ti]]
+		var v1 := verts[indices[ti + 1]]
+		var v2 := verts[indices[ti + 2]]
+		var n := norms[indices[ti]]
+		var computed_n := (v2 - v0).cross(v1 - v0).normalized()
+		if computed_n.dot(n) < 0.99:
+			all_winding_ok = false
+			break
+	_assert_true(all_winding_ok, "All 6 voxel faces obey Godot CW front-face winding")
+
+	# 2. Solid 16x16x16 chunk: greedy mesh must collapse 4096*12=49152 tris to 12 tris, and 1 BoxShape3D!
+	var solid_padded := PackedByteArray()
+	solid_padded.resize(VoxelMesher.PADDED_SIZE * VoxelMesher.PADDED_SIZE * VoxelMesher.PADDED_SIZE)
+	var solid_core := PackedByteArray()
+	solid_core.resize(VoxelChunk.VOLUME)
+	solid_core.fill(VoxelMaterials.Id.CONCRETE)
+	for y in range(1, 17):
+		for z in range(1, 17):
+			for x in range(1, 17):
+				solid_padded[VoxelMesher.padded_index(x, y, z)] = VoxelMaterials.Id.CONCRETE
+	var solid_geom := VoxelMesher.build_chunk_geometry(solid_padded)
+	var solid_boxes := VoxelMesher.build_greedy_boxes(solid_core)
+	_assert_true(solid_geom["indices"].size() == 36, "Solid 16x16x16 chunk greedy-meshes to 12 triangles")
+	_assert_true(solid_boxes.size() == 1, "Solid 16x16x16 chunk merges into exactly 1 BoxShape3D")
+
+
+func _test_chunk_boundary_operations() -> void:
+	var world := VoxelWorld.new()
+	root.add_child(world)
+	await process_frame
+
+	# Build brick wall crossing x=15 | x=16 chunk boundary
+	world.fill_box(Vector3i(12, 0, 4), Vector3i(20, 4, 4), VoxelMaterials.Id.BRICK)
+	world.rebuild_dirty_sync()
+	_assert_true(world.get_active_chunk_count() == 2, "Cross-boundary wall creates exactly 2 chunks")
+	var tris_before := world.total_triangles
+
+	# Carve at x=15 (chunk 0 boundary) and verify chunk 1 neighbor face updates properly
+	world.damage_voxel(Vector3i(15, 2, 4), 100.0, false, false)
+	world.rebuild_dirty_sync()
+	_assert_true(world.get_voxel(Vector3i(15, 2, 4)) == 0, "Boundary voxel x=15 destroyed")
+	_assert_true(world.get_voxel(Vector3i(16, 2, 4)) == VoxelMaterials.Id.BRICK, "Adjacent chunk voxel x=16 intact")
+	_assert_true(world.total_triangles > tris_before, "Neighbor chunk exposed internal face cleanly across boundary")
+
+	# DDA raycast check from (15 * 0.5 + 0.25, 1.25, -2.0) along +Z hits x=16 or nearby wall
+	var rc := world.raycast(Vector3(8.25, 1.25, 0.0), Vector3(0.0, 0.0, 1.0), 10.0)
+	_assert_true(bool(rc.get("hit", false)), "DDA raycast hits voxel wall across chunk boundary")
+	_assert_true(rc.get("cell", Vector3i.ZERO) == Vector3i(16, 2, 4), "DDA raycast returns exact cell (16,2,4)")
+
+	world.queue_free()
+	await process_frame
+
+
+func _test_structural_collapse_and_detachment() -> void:
+	var world := VoxelWorld.new()
+	root.add_child(world)
+	await process_frame
+
+	# Ground bedrock layer y=0..1
+	world.fill_box(Vector3i(0, 0, 0), Vector3i(12, 1, 8), VoxelMaterials.Id.BEDROCK)
+	# Two brick pillars y=2..5 at x=2 and x=8
+	world.fill_box(Vector3i(2, 2, 4), Vector3i(2, 5, 4), VoxelMaterials.Id.BRICK)
+	world.fill_box(Vector3i(8, 2, 4), Vector3i(8, 5, 4), VoxelMaterials.Id.BRICK)
+	# Concrete bridge slab across top y=6..7, x=2..8, z=3..5 (7*2*3 = 42 voxels)
+	world.fill_box(Vector3i(2, 6, 3), Vector3i(8, 7, 5), VoxelMaterials.Id.CONCRETE)
+	world.rebuild_dirty_sync()
+
+	# Cut left pillar at y=2: still supported by right pillar -> slab must stay!
+	world.damage_voxel(Vector3i(2, 2, 4), 100.0, false, true)
+	world.rebuild_dirty_sync()
+	_assert_true(
+		world.get_voxel(Vector3i(5, 6, 4)) == VoxelMaterials.Id.CONCRETE,
+		"Bridge stays anchored while 1 pillar remains"
+	)
+
+	# Cut right pillar at y=2: entire top bridge + remaining pillar stubs become unsupported -> detach!
+	world.damage_voxel(Vector3i(8, 2, 4), 100.0, false, true)
+	world.rebuild_dirty_sync()
+	_assert_true(
+		world.get_voxel(Vector3i(5, 6, 4)) == 0,
+		"Severed bridge slab removed from static voxel world"
+	)
+	_assert_true(
+		world.get_active_debris_body_count() >= 1,
+		"Detached RigidBody3D spawned for severed structure"
+	)
+
+	world.queue_free()
+	await process_frame
+
+
+func _test_fire_and_cryo_extinguish() -> void:
+	var world := VoxelWorld.new()
+	root.add_child(world)
+	await process_frame
+
+	world.fill_box(Vector3i(2, 2, 2), Vector3i(6, 3, 4), VoxelMaterials.Id.WOOD)
+	world.rebuild_dirty_sync()
+
+	var ignited := world.fire_sim.ignite_sphere(world.cell_to_world_center(Vector3i(4, 2, 3)), 1.2, world)
+	_assert_true(ignited >= 1, "Wood voxels ignite cleanly")
+	_assert_true(world.fire_sim.active_fires.size() >= 1, "Fire simulation tracks active burning cells")
+
+	var ext := world.fire_sim.extinguish_sphere(world.cell_to_world_center(Vector3i(4, 2, 3)), 3.0)
+	_assert_true(ext == ignited, "Cryo-Foam extinguishes all fires in radius")
+	_assert_true(world.fire_sim.active_fires.is_empty(), "Active fires cleared after extinguishing")
+
+	world.queue_free()
+	await process_frame
+
+
+func _test_serializer_round_trip() -> void:
+	var world := VoxelWorld.new()
+	root.add_child(world)
+	await process_frame
+
+	world.fill_box(Vector3i(0, 0, 0), Vector3i(15, 1, 15), VoxelMaterials.Id.BEDROCK)
+	world.fill_box(Vector3i(3, 2, 3), Vector3i(6, 5, 6), VoxelMaterials.Id.BRICK)
+	world.set_voxel(Vector3i(4, 3, 4), VoxelMaterials.Id.WOOD)
+	world.fire_sim.ignite_cell(Vector3i(4, 3, 4), world)
+	world.rebuild_dirty_sync()
+
+	var save_path := "user://test_world_roundtrip.flsv"
+	var meta_in := {"mission_id": "mission_1_dock", "elapsed": 18.25, "alarm": true}
+	var saved_ok := VoxelSerializer.save_to_file(save_path, world, meta_in)
+	_assert_true(saved_ok, "FLSV save_to_file succeeded")
+
+	world.clear_world()
+	_assert_true(world.get_voxel(Vector3i(4, 3, 4)) == 0, "World cleared before deserialize")
+
+	var res := VoxelSerializer.load_from_file(save_path, world)
+	world.rebuild_dirty_sync()
+	_assert_true(bool(res.get("ok", false)), "FLSV load_from_file succeeded")
+	_assert_true(world.get_voxel(Vector3i(3, 2, 3)) == VoxelMaterials.Id.BRICK, "Brick voxel restored from FLSV")
+	_assert_true(world.get_voxel(Vector3i(4, 3, 4)) == VoxelMaterials.Id.WOOD, "Wood voxel restored from FLSV")
+	_assert_true(world.fire_sim.active_fires.has(Vector3i(4, 3, 4)), "Active fire cell restored from FLSV")
+	_assert_true(str(res.get("meta", {}).get("mission_id", "")) == "mission_1_dock", "Meta state restored from FLSV")
+
+	world.queue_free()
+	await process_frame
 
 
 func _test_main_scene_smoke() -> void:
