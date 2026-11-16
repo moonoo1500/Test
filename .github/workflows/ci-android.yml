@@ -99,14 +99,21 @@ jobs:
       - name: Run Godot headless unit & smoke tests
         run: |
           /tmp/godot-bin/godot --headless --path . --script res://tests/test_runner.gd 2>&1 | tee logs/tests.log
+          SUMMARY=$(grep "Test Summary:" logs/tests.log || true)
+          echo "::notice title=Tests::$SUMMARY"
 
-      - name: Run headless/software benchmark if available
+      - name: Run headless benchmark & software Vulkan smoke test
         run: |
-          if [ -f "scripts/benchmark/benchmark_runner.gd" ]; then
-            /tmp/godot-bin/godot --headless --path . --script res://scripts/benchmark/benchmark_runner.gd 2>&1 | tee logs/benchmark.log
-          else
-            echo "Benchmark script not yet added in this iteration." | tee logs/benchmark.log
-          fi
+          /tmp/godot-bin/godot --headless --path . --script res://scripts/benchmark/benchmark_runner.gd 2>&1 | tee logs/benchmark.log
+          BENCH_JSON=$(sed -n '/BENCHMARK_JSON_BEGIN/,/BENCHMARK_JSON_END/p' logs/benchmark.log | grep -v 'BENCHMARK_JSON_' | tr -d '\n' | sed 's/  */ /g')
+          echo "::notice title=Benchmark::$BENCH_JSON"
+
+          # Software Vulkan shader/scene render check via Mesa lavapipe + Xvfb
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb mesa-vulkan-drivers >/dev/null
+          VK_ICD=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json 2>/dev/null | head -n 1 || true)
+          echo "Vulkan ICD: $VK_ICD"
+          timeout 45s xvfb-run -a env VK_ICD_FILENAMES="$VK_ICD" /tmp/godot-bin/godot --rendering-driver vulkan --path . --quit-after 30 --scene res://scenes/GamePlay.tscn 2>&1 | tee logs/vulkan_smoke.log
+          echo "::notice title=VulkanSmoke::$(grep -iE 'ERROR|Vulkan|Shader' logs/vulkan_smoke.log | head -n 6 | tr '\n' ' ')"
 
       - name: Configure Godot Android SDK & Keystore settings
         env:
@@ -202,6 +209,11 @@ jobs:
 
           (cd build && sha256sum "$APK_NAME" > "${APK_NAME}.sha256")
           cat "build/${APK_NAME}.sha256"
+          APK_BYTES=$(stat -c%s "$APK_PATH")
+          SHA=$(cat "build/${APK_NAME}.sha256")
+          BADGE=$(head -n 3 logs/apk_badging.txt | tr '\n' ' ')
+          SIG=$(grep -E "Verified using|Signer #1" logs/apk_signature.txt | head -n 3 | tr '\n' ' ')
+          echo "::notice title=APK::file=$APK_NAME bytes=$APK_BYTES signing=$SIGNING_MODE sha256=($SHA) badging=($BADGE) sig=($SIG)"
 
       - name: Upload Build Artifacts & QA Logs
         uses: actions/upload-artifact@v4

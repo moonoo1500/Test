@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/gameplay/mission_director.gd" id="1_dir"]
+[ext_resource type="Script" path="res://scripts/ui/touch_hud.gd" id="2_hud"]
+
+[node name="GamePlay" type="Node"]
+
+[node name="MissionDirector" type="Node3D" parent="."]
+script = ExtResource("1_dir")
+
+[node name="TouchHud" type="CanvasLayer" parent="."]
+script = ExtResource("2_hud")

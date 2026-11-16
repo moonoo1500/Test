@@ -28,7 +28,9 @@ func _run_all_tests() -> void:
 	await _test_structural_collapse_and_detachment()
 	await _test_fire_and_cryo_extinguish()
 	await _test_serializer_round_trip()
-	await _test_main_scene_smoke()
+	await _test_all_levels_and_missions()
+	await _test_gameplay_integration_and_autosave()
+	await _test_gameplay_and_benchmark_smoke()
 
 	print("=== Test Summary: %d passed, %d failed ===" % [_passed, _failed])
 	quit(0 if _failed == 0 else 1)
@@ -41,7 +43,7 @@ func _test_localization() -> void:
 		return
 	var parity: Dictionary = loc.verify_parity()
 	_assert_true(bool(parity.get("ok", false)), "RU/EN localization keys match 100%")
-	_assert_true(int(parity.get("ru_count", 0)) >= 100, "Localization has full key catalog")
+	_assert_true(int(parity.get("ru_count", 0)) >= 120, "Localization has full key catalog")
 
 	loc.apply_language_preference("ru")
 	_assert_true(TranslationServer.translate("GAME_TITLE") == "КОНТУР СЛОМА", "RU translation works")
@@ -84,7 +86,6 @@ func _test_settings_and_progress_persistence() -> void:
 
 
 func _test_greedy_mesher_winding_and_colliders() -> void:
-	# 1. Single isolated voxel: must produce 6 quads = 12 tris, ALL matching Godot CW front-face winding
 	var padded := PackedByteArray()
 	padded.resize(VoxelMesher.PADDED_SIZE * VoxelMesher.PADDED_SIZE * VoxelMesher.PADDED_SIZE)
 	padded[VoxelMesher.padded_index(4, 4, 4)] = VoxelMaterials.Id.BRICK
@@ -106,7 +107,6 @@ func _test_greedy_mesher_winding_and_colliders() -> void:
 			break
 	_assert_true(all_winding_ok, "All 6 voxel faces obey Godot CW front-face winding")
 
-	# 2. Solid 16x16x16 chunk: greedy mesh must collapse 4096*12=49152 tris to 12 tris, and 1 BoxShape3D!
 	var solid_padded := PackedByteArray()
 	solid_padded.resize(VoxelMesher.PADDED_SIZE * VoxelMesher.PADDED_SIZE * VoxelMesher.PADDED_SIZE)
 	var solid_core := PackedByteArray()
@@ -127,20 +127,17 @@ func _test_chunk_boundary_operations() -> void:
 	root.add_child(world)
 	await process_frame
 
-	# Build brick wall crossing x=15 | x=16 chunk boundary
 	world.fill_box(Vector3i(12, 0, 4), Vector3i(20, 4, 4), VoxelMaterials.Id.BRICK)
 	world.rebuild_dirty_sync()
 	_assert_true(world.get_active_chunk_count() == 2, "Cross-boundary wall creates exactly 2 chunks")
 	var tris_before := world.total_triangles
 
-	# Carve at x=15 (chunk 0 boundary) and verify chunk 1 neighbor face updates properly
 	world.damage_voxel(Vector3i(15, 2, 4), 100.0, false, false)
 	world.rebuild_dirty_sync()
 	_assert_true(world.get_voxel(Vector3i(15, 2, 4)) == 0, "Boundary voxel x=15 destroyed")
 	_assert_true(world.get_voxel(Vector3i(16, 2, 4)) == VoxelMaterials.Id.BRICK, "Adjacent chunk voxel x=16 intact")
 	_assert_true(world.total_triangles > tris_before, "Neighbor chunk exposed internal face cleanly across boundary")
 
-	# DDA raycast check from (15 * 0.5 + 0.25, 1.25, -2.0) along +Z hits x=16 or nearby wall
 	var rc := world.raycast(Vector3(8.25, 1.25, 0.0), Vector3(0.0, 0.0, 1.0), 10.0)
 	_assert_true(bool(rc.get("hit", false)), "DDA raycast hits voxel wall across chunk boundary")
 	_assert_true(rc.get("cell", Vector3i.ZERO) == Vector3i(16, 2, 4), "DDA raycast returns exact cell (16,2,4)")
@@ -154,16 +151,12 @@ func _test_structural_collapse_and_detachment() -> void:
 	root.add_child(world)
 	await process_frame
 
-	# Ground bedrock layer y=0..1
 	world.fill_box(Vector3i(0, 0, 0), Vector3i(12, 1, 8), VoxelMaterials.Id.BEDROCK)
-	# Two brick pillars y=2..5 at x=2 and x=8
 	world.fill_box(Vector3i(2, 2, 4), Vector3i(2, 5, 4), VoxelMaterials.Id.BRICK)
 	world.fill_box(Vector3i(8, 2, 4), Vector3i(8, 5, 4), VoxelMaterials.Id.BRICK)
-	# Concrete bridge slab across top y=6..7, x=2..8, z=3..5 (7*2*3 = 42 voxels)
 	world.fill_box(Vector3i(2, 6, 3), Vector3i(8, 7, 5), VoxelMaterials.Id.CONCRETE)
 	world.rebuild_dirty_sync()
 
-	# Cut left pillar at y=2: still supported by right pillar -> slab must stay!
 	world.damage_voxel(Vector3i(2, 2, 4), 100.0, false, true)
 	world.rebuild_dirty_sync()
 	_assert_true(
@@ -171,7 +164,6 @@ func _test_structural_collapse_and_detachment() -> void:
 		"Bridge stays anchored while 1 pillar remains"
 	)
 
-	# Cut right pillar at y=2: entire top bridge + remaining pillar stubs become unsupported -> detach!
 	world.damage_voxel(Vector3i(8, 2, 4), 100.0, false, true)
 	world.rebuild_dirty_sync()
 	_assert_true(
@@ -238,14 +230,112 @@ func _test_serializer_round_trip() -> void:
 	await process_frame
 
 
-func _test_main_scene_smoke() -> void:
-	var packed: PackedScene = load("res://scenes/MainMenu.tscn")
-	_assert_true(packed != null, "MainMenu.tscn loads cleanly")
-	if packed != null:
-		var inst := packed.instantiate()
-		_assert_true(inst != null, "MainMenu.tscn instantiates cleanly")
-		root.add_child(inst)
+func _test_all_levels_and_missions() -> void:
+	var world := VoxelWorld.new()
+	var eroot := Node3D.new()
+	root.add_child(world)
+	root.add_child(eroot)
+	await process_frame
+
+	var cases := [
+		["training_yard", "tutorial", 1, 1],
+		["dock", "mission_1_dock", 3, 1],
+		["dock", "mission_2_mooring", 4, 1],
+		["quarry", "mission_3_quarry", 4, 1],
+		["cryo", "mission_4_cryo", 5, 2],
+	]
+	for c in cases:
+		for child in eroot.get_children():
+			child.queue_free()
+		var built := LevelBuilder.build_level(world, eroot, c[0], c[1], true)
+		_assert_true(built["objectives"].size() == int(c[2]), "Level %s spawns %d objectives" % [c[1], int(c[2])])
+		_assert_true(built["vehicles"].size() == int(c[3]), "Level %s spawns %d vehicle(s)" % [c[1], int(c[3])])
+		_assert_true(world.get_active_chunk_count() >= 4, "Level %s built chunks cleanly" % c[1])
+
+	# Bridge placement test
+	var placed := world.place_bridge_span(Vector3(10.0, 3.0, 10.0), Vector3(14.0, 3.0, 10.0), 2)
+	_assert_true(placed >= 8, "Span-X places bridge voxels cleanly")
+
+	eroot.queue_free()
+	world.queue_free()
+	await process_frame
+
+
+func _test_gameplay_integration_and_autosave() -> void:
+	var gs := root.get_node_or_null("GameState")
+	_assert_true(gs != null, "GameState available for integration test")
+	if gs == null:
+		return
+	gs.clear_autosave()
+	gs.pending_launch = {
+		"mode": "campaign",
+		"mission_id": "mission_1_dock",
+		"location_id": "dock",
+		"resume_autosave": false,
+	}
+	var packed: PackedScene = load("res://scenes/GamePlay.tscn")
+	var gp := packed.instantiate()
+	root.add_child(gp)
+	await process_frame
+	await process_frame
+
+	var director := gp.get_node_or_null("MissionDirector") as MissionDirector
+	_assert_true(director != null, "MissionDirector instantiated inside GamePlay.tscn")
+	if director != null:
+		_assert_true(director.objectives.size() == 3, "Mission 1 loaded 3 objectives")
+		_assert_true(director.vehicles.size() == 1, "Mission 1 loaded Burlak-2 vehicle")
+
+		# Test tool cycling 0..5 & seismic charge detonation
+		director.tool_manager.select_tool(ToolManager.ToolId.CHARGE)
+		var pre_charges := int(director.tool_manager.ammo[ToolManager.ToolId.CHARGE])
+		director.tool_manager.set_primary_held(true)
+		director.tool_manager.set_primary_held(false)
 		await process_frame
-		_assert_true(inst.is_inside_tree(), "MainMenu enters SceneTree without errors")
-		inst.queue_free()
-		await process_frame
+		_assert_true(
+			int(director.tool_manager.ammo[ToolManager.ToolId.CHARGE]) == pre_charges - 1,
+			"Seismic charge consumed ammo on throw"
+		)
+		var det_count := director.tool_manager.detonate_all_charges()
+		_assert_true(det_count == 1, "Seismic charge detonated remotely")
+
+		# Test autosave + restore flow
+		director.elapsed_time = 27.5
+		var saved := director.save_autosave()
+		_assert_true(saved and gs.has_autosave(), "Gameplay autosave written cleanly")
+
+	gp.queue_free()
+	await process_frame
+
+	# Re-launch with resume_autosave = true
+	gs.pending_launch = {
+		"mode": "campaign",
+		"mission_id": "mission_1_dock",
+		"location_id": "dock",
+		"resume_autosave": true,
+	}
+	var gp2 := packed.instantiate()
+	root.add_child(gp2)
+	await process_frame
+	await process_frame
+	var director2 := gp2.get_node_or_null("MissionDirector") as MissionDirector
+	_assert_true(
+		director2 != null and is_equal_approx(director2.elapsed_time, 27.5),
+		"MissionDirector restored elapsed_time from autosave"
+	)
+	gs.clear_autosave()
+	gp2.queue_free()
+	await process_frame
+
+
+func _test_gameplay_and_benchmark_smoke() -> void:
+	for path in ["res://scenes/MainMenu.tscn", "res://scenes/GamePlay.tscn", "res://scenes/Benchmark.tscn"]:
+		var packed: PackedScene = load(path)
+		_assert_true(packed != null, "Scene loads: " + path)
+		if packed != null:
+			var inst := packed.instantiate()
+			_assert_true(inst != null, "Scene instantiates: " + path)
+			root.add_child(inst)
+			await process_frame
+			_assert_true(inst.is_inside_tree(), "Scene runs inside SceneTree: " + path)
+			inst.queue_free()
+			await process_frame
