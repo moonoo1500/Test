@@ -103,11 +103,12 @@ jobs:
           RC=$?
           set -e
           cat logs/tests.log
-          SUMMARY=$(grep -E "Test Summary:|FAIL|ERROR" logs/tests.log | tail -n 10 | tr '\n' ' ')
           if [ "$RC" -ne 0 ]; then
-            echo "::error title=TestsFailed::rc=$RC $SUMMARY"
+            ERR_DETAILS=$(grep -B 1 -A 2 -iE "ERROR|FAIL|Parse|SCRIPT" logs/tests.log | head -n 24 | tr '\n' ' ')
+            echo "::error title=TestsFailed::rc=$RC $ERR_DETAILS"
             exit "$RC"
           fi
+          SUMMARY=$(grep "Test Summary:" logs/tests.log | tail -n 1)
           echo "::notice title=Tests::$SUMMARY"
 
       - name: Run Godot headless 4-phase benchmark

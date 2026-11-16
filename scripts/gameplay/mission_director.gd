@@ -16,7 +16,7 @@ var voxel_world: VoxelWorld
 var player: PlayerController
 var tool_manager: ToolManager
 var entity_root: Node3D
-var hud: TouchHud
+var hud: Node = null
 
 var objectives: Array[PhysicsProp] = []
 var collected_ids: Array[String] = []
@@ -111,8 +111,8 @@ func _setup_scene_nodes() -> void:
 	add_child(_evac_beacon)
 
 	var hud_node := get_node_or_null("../TouchHud")
-	if hud_node is TouchHud:
-		hud = hud_node as TouchHud
+	if hud_node != null and hud_node.has_method("bind_director"):
+		hud = hud_node
 		hud.bind_director(self)
 
 
