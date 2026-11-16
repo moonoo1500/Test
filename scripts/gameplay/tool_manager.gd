@@ -278,7 +278,7 @@ func _process_thermal_lance(dt: float) -> void:
 	if bool(rc.get("hit", false)):
 		end_pos = rc["position"]
 		var mat_id: int = int(rc["mat_id"])
-		var cut := _world.carve_sphere(end_pos, 0.44, 210.0 * dt, true, true)
+		var cut := _world.carve_sphere(end_pos, 0.54, 420.0 * dt, true, true)
 		if _world.fire_sim != null:
 			_world.fire_sim.ignite_sphere(end_pos, 0.75, _world)
 		_spray_accum += dt

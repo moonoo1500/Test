@@ -94,7 +94,7 @@ func trigger_explosion() -> void:
 	var pos := global_position
 	queue_free()
 	if _voxel_world != null:
-		_voxel_world.detonate_explosion(pos, 2.75, 115.0, true)
+		_voxel_world.detonate_explosion(pos, 2.75, 165.0, true)
 	AppServices.play_sfx("explosion", 1.5, 0.08)
 	AppServices.vibrate(95)
 	detonated.emit(pos)

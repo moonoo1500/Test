@@ -490,9 +490,10 @@ func carve_sphere(
 				if VoxelMaterials.is_hammer_immune(mat) and not allow_steel_cut:
 					continue
 
-				var falloff := clampf(1.0 - sqrt(d2) / maxf(radius, 0.01), 0.15, 1.0)
+				var falloff := clampf(1.0 - sqrt(d2) / maxf(radius, 0.01), 0.25, 1.0)
 				var resist := VoxelMaterials.get_blast_resist(mat)
-				var effective := base_damage * falloff * (1.15 - resist)
+				var mat_mult := 1.0 if (allow_steel_cut and mat == VoxelMaterials.Id.STEEL) else (1.15 - resist)
+				var effective := base_damage * falloff * mat_mult
 				var cc := cell_to_chunk_coord(cell)
 				var ch: VoxelChunk = chunks.get(cc, null)
 				if ch == null:
