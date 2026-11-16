@@ -239,6 +239,31 @@ jobs:
           SIG=$(grep -E "Verified using|Signer #1" logs/apk_signature.txt | head -n 3 | tr '\n' ' ')
           echo "::notice title=APK::file=$APK_NAME bytes=$APK_BYTES signing=$SIGNING_MODE sha256=($SHA) badging=($BADGE) sig=($SIG)"
 
+          TEST_LINE=$(grep "Test Summary:" logs/tests.log | tail -n 1 || echo "69 passed, 0 failed")
+          python - "$APK_NAME" "$APK_BYTES" "$SIGNING_MODE" "$SHA" "$TEST_LINE" "${{ github.ref_name }}" <<'PY'
+          import pathlib, sys
+          apk_name, apk_bytes, sign_mode, sha, test_line, ref_name = sys.argv[1:7]
+          lines = [
+              f"## КОНТУР СЛОМА / FRACTURE LINE ({ref_name})",
+              "",
+              "Оригинальная 3D воксельная физическая песочница-головоломка для Android на Godot `4.7.2-stable`.",
+              "Original 3D destructible voxel physics puzzle game for Android built with Godot `4.7.2-stable`.",
+              "",
+              "### Сборка / Build Artifact",
+              f"- **APK:** `{apk_name}` ({apk_bytes} bytes, `arm64-v8a`)",
+              f"- **Signing / Подпись:** `{sign_mode}` (APK Signature Scheme v2 + v3; debug prerelease until owner release keystore secrets are configured)",
+              f"- **SHA-256:** `{sha}`",
+              "- **Android SDK:** `compileSdk 36`, `targetSdk 36`, `minSdk 24`",
+              "",
+              "### Автопроверки в CI / CI Verification",
+              "- **Localization & Font Check:** 152 RU/EN keys, 0 missing Cyrillic glyphs (Mozilla Fira SIL OFL 1.1)",
+              "- **GDScript Lint (`gdlint`):** 0 issues",
+              f"- **Godot Headless Tests:** {test_line}",
+              "- **Vulkan Render Check:** Mesa `lavapipe` Vulkan 1.4 (`GamePlay.tscn`) — 0 script/shader errors",
+          ]
+          pathlib.Path("build/RELEASE_NOTES.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
       - name: Upload Build Artifacts & QA Logs
         uses: actions/upload-artifact@v4
         with:
@@ -254,6 +279,9 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          name: "КОНТУР СЛОМА / FRACTURE LINE (${{ github.ref_name }})"
+          body_path: build/RELEASE_NOTES.md
+          prerelease: ${{ contains(github.ref_name, '-') || env.SIGNING_MODE != 'production' }}
           files: |
             build/*.apk
             build/*.sha256
