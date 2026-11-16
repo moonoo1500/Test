@@ -92,8 +92,8 @@ static func deserialize_into_world(packet: PackedByteArray, world: Node) -> Dict
 		return {"ok": false, "error": "invalid_inner_magic"}
 
 	var version := buf.get_u16()
-	var _flags := buf.get_u16()
-	if version != FORMAT_VERSION:
+	var flags := buf.get_u16()
+	if version != FORMAT_VERSION or flags > 65535:
 		return {"ok": false, "error": "unsupported_version"}
 
 	var meta_len := buf.get_u32()
