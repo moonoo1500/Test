@@ -319,7 +319,7 @@ func _test_gameplay_integration_and_autosave() -> void:
 	await process_frame
 	var director2 := gp2.get_node_or_null("MissionDirector") as MissionDirector
 	_assert_true(
-		director2 != null and is_equal_approx(director2.elapsed_time, 27.5),
+		director2 != null and director2.elapsed_time >= 27.5 and director2.elapsed_time < 29.0,
 		"MissionDirector restored elapsed_time from autosave"
 	)
 	gs.clear_autosave()

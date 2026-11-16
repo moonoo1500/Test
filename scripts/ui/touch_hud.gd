@@ -39,10 +39,18 @@ var _drive_gas: bool = false
 var _drive_rev: bool = false
 var _drive_left: bool = false
 var _drive_right: bool = false
+var _ui_built: bool = false
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	_ensure_ui_built()
+
+
+func _ensure_ui_built() -> void:
+	if _ui_built:
+		return
+	_ui_built = true
 	_build_ui()
 	LocalizationManager.language_changed.connect(_on_lang_changed)
 	GameState.settings_changed.connect(_apply_hud_preferences)
@@ -52,6 +60,7 @@ func _ready() -> void:
 
 
 func bind_director(director: MissionDirector) -> void:
+	_ensure_ui_built()
 	_director = director
 	_director.state_updated.connect(_on_director_updated)
 	_director.mission_finished.connect(_on_mission_finished)

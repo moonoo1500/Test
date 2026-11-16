@@ -98,15 +98,29 @@ jobs:
 
       - name: Run Godot headless unit & smoke tests
         run: |
+          set +e
           timeout -k 5s 90s /tmp/godot-bin/godot --headless --path . --script res://tests/test_runner.gd > logs/tests.log 2>&1
+          RC=$?
+          set -e
           cat logs/tests.log
-          SUMMARY=$(grep "Test Summary:" logs/tests.log || true)
+          SUMMARY=$(grep -E "Test Summary:|FAIL|ERROR" logs/tests.log | tail -n 10 | tr '\n' ' ')
+          if [ "$RC" -ne 0 ]; then
+            echo "::error title=TestsFailed::rc=$RC $SUMMARY"
+            exit "$RC"
+          fi
           echo "::notice title=Tests::$SUMMARY"
 
       - name: Run Godot headless 4-phase benchmark
         run: |
+          set +e
           timeout -k 5s 60s /tmp/godot-bin/godot --headless --path . --script res://scripts/benchmark/benchmark_runner.gd > logs/benchmark.log 2>&1
+          RC=$?
+          set -e
           cat logs/benchmark.log
+          if [ "$RC" -ne 0 ]; then
+            echo "::error title=BenchmarkFailed::rc=$RC $(tail -n 10 logs/benchmark.log | tr '\n' ' ')"
+            exit "$RC"
+          fi
           BENCH_JSON=$(sed -n '/BENCHMARK_JSON_BEGIN/,/BENCHMARK_JSON_END/p' logs/benchmark.log | grep -v 'BENCHMARK_JSON_' | tr -d '\n' | sed 's/  */ /g')
           echo "::notice title=Benchmark::$BENCH_JSON"
 
