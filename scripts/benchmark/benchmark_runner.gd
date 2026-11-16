@@ -21,31 +21,32 @@ func _run_benchmark() -> void:
 	LevelBuilder.build_level(_world, _entity_root, "dock", "mission_1_dock", false)
 	var initial_build_ms := float(Time.get_ticks_usec() - t_build0) / 1000.0
 	await process_frame
+	_world.last_chunk_build_ms = 0.0
 
 	# Phase 1: Baseline idle / traverse
 	_phase_stats.append(await _measure_phase("flythrough", 40, func(_step: int) -> void:
 		pass
 	))
 
-	# Phase 2: Rapid local breaches (simulating hammer/lance across wall)
+	# Phase 2: Rapid local breaches (simulating hammer/lance across Gatehouse brick wall)
 	_phase_stats.append(await _measure_phase("breach_series", 30, func(step: int) -> void:
 		if step % 3 == 0:
-			var p := Vector3(8.0 + float(step) * 0.45, 2.0, 6.2)
-			_world.carve_sphere(p, 0.72, 35.0, false, true)
+			var p := Vector3(7.5 + float(step) * 0.25, 2.0, 6.0)
+			_world.carve_sphere(p, 0.78, 70.0, false, true)
 	))
 
-	# Phase 3: Heavy explosion + fuel chain
+	# Phase 3: Heavy explosion + fuel depot chain blast
 	_phase_stats.append(await _measure_phase("mega_blast", 35, func(step: int) -> void:
 		if step == 2:
-			_world.detonate_explosion(Vector3(36.5, 2.0, 11.5), 3.0, 120.0, true)
+			_world.detonate_explosion(Vector3(36.75, 1.5, 11.5), 3.0, 130.0, true)
 	))
 
-	# Phase 4: Multi-pillar crane container structural collapse
+	# Phase 4: Multi-pillar crane container structural collapse (sever both steel struts)
 	_phase_stats.append(await _measure_phase("pillar_collapse", 45, func(step: int) -> void:
 		if step == 2:
-			_world.carve_sphere(Vector3(40.25, 2.0, 23.25), 1.0, 200.0, true, true)
+			_world.carve_sphere(Vector3(40.25, 2.5, 23.25), 1.4, 340.0, true, true)
 		elif step == 6:
-			_world.carve_sphere(Vector3(43.75, 2.0, 23.25), 1.0, 200.0, true, true)
+			_world.carve_sphere(Vector3(43.75, 2.5, 23.25), 1.4, 340.0, true, true)
 	))
 
 	var mem_static_mb := float(OS.get_static_memory_usage()) / (1024.0 * 1024.0)

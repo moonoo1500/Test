@@ -583,8 +583,6 @@ func _spawn_detached_cluster_body(
 	mats: PackedByteArray,
 	impulse_origin: Vector3
 ) -> void:
-	if DisplayServer.get_name() == "headless" and cells.size() > 512:
-		return
 	while _detached_bodies.size() >= max_active_debris_bodies:
 		var oldest: Dictionary = _detached_bodies.pop_front()
 		var old_body: RigidBody3D = oldest["body"]

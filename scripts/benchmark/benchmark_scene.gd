@@ -104,17 +104,17 @@ func _on_start_pressed() -> void:
 	)
 	await _run_visual_phase("BENCH_PHASE_BREACH", 45, frame_times, func(i: int) -> void:
 		if i % 4 == 0:
-			_world.carve_sphere(Vector3(9.0 + float(i) * 0.35, 2.0, 6.2), 0.75, 40.0, false, true)
+			_world.carve_sphere(Vector3(7.5 + float(i) * 0.25, 2.0, 6.0), 0.78, 70.0, false, true)
 	)
 	await _run_visual_phase("BENCH_PHASE_BLAST", 45, frame_times, func(i: int) -> void:
 		if i == 3:
-			_world.detonate_explosion(Vector3(36.5, 2.0, 11.5), 3.0, 120.0, true)
+			_world.detonate_explosion(Vector3(36.75, 1.5, 11.5), 3.0, 130.0, true)
 	)
 	await _run_visual_phase("BENCH_PHASE_COLLAPSE", 60, frame_times, func(i: int) -> void:
 		if i == 3:
-			_world.carve_sphere(Vector3(40.25, 2.0, 23.25), 1.0, 200.0, true, true)
+			_world.carve_sphere(Vector3(40.25, 2.5, 23.25), 1.4, 340.0, true, true)
 		elif i == 10:
-			_world.carve_sphere(Vector3(43.75, 2.0, 23.25), 1.0, 200.0, true, true)
+			_world.carve_sphere(Vector3(43.75, 2.5, 23.25), 1.4, 340.0, true, true)
 	)
 
 	frame_times.sort()

@@ -130,6 +130,10 @@ func _apply_default_theme_font() -> void:
 		return
 	if ResourceLoader.exists(FONT_REGULAR_PATH):
 		var font: Font = load(FONT_REGULAR_PATH)
-		if font != null:
-			ThemeDB.get_project_theme().default_font = font
-			ThemeDB.get_project_theme().default_font_size = 18
+		if font != null and get_tree() != null and get_tree().root != null:
+			var t: Theme = get_tree().root.theme
+			if t == null:
+				t = Theme.new()
+				get_tree().root.theme = t
+			t.default_font = font
+			t.default_font_size = 18

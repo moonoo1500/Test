@@ -133,7 +133,11 @@ jobs:
           echo "Vulkan ICD: $VK_ICD"
           timeout -k 5s 30s xvfb-run -a env VK_ICD_FILENAMES="$VK_ICD" /tmp/godot-bin/godot --rendering-driver vulkan --path . --quit-after 25 --scene res://scenes/GamePlay.tscn > logs/vulkan_smoke.log 2>&1 || true
           cat logs/vulkan_smoke.log
-          echo "::notice title=VulkanSmoke::$(tail -n 6 logs/vulkan_smoke.log | tr '\n' ' ')"
+          if grep -q "SCRIPT ERROR" logs/vulkan_smoke.log; then
+            echo "::error title=VulkanScriptError::$(grep -A 2 'SCRIPT ERROR' logs/vulkan_smoke.log | head -n 9 | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "::notice title=VulkanSmoke::$(grep -iE 'Vulkan|Godot|Shader|ERROR' logs/vulkan_smoke.log | head -n 6 | tr '\n' ' ')"
 
       - name: Configure Godot Android SDK & Keystore settings
         env:
