@@ -11,7 +11,7 @@ var _running: bool = false
 
 
 func _ready() -> void:
-	GameState.apply_quality_to_viewport(get_viewport())
+	AppServices.apply_quality(get_viewport())
 	_setup_scene()
 
 
@@ -26,7 +26,7 @@ func _setup_scene() -> void:
 
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-45.0, -35.0, 0.0)
-	sun.shadow_enabled = bool(GameState.get_quality_config().get("shadows_enabled", true))
+	sun.shadow_enabled = bool(AppServices.quality_cfg().get("shadows_enabled", true))
 	add_child(sun)
 
 	_world = VoxelWorld.new()

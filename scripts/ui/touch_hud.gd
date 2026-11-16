@@ -52,8 +52,12 @@ func _ensure_ui_built() -> void:
 		return
 	_ui_built = true
 	_build_ui()
-	LocalizationManager.language_changed.connect(_on_lang_changed)
-	GameState.settings_changed.connect(_apply_hud_preferences)
+	var loc := AppServices.loc()
+	if loc != null:
+		loc.language_changed.connect(_on_lang_changed)
+	var gs := AppServices.game_state()
+	if gs != null:
+		gs.settings_changed.connect(_apply_hud_preferences)
 	_apply_safe_area()
 	_apply_hud_preferences()
 	_refresh_texts()
@@ -515,16 +519,21 @@ func _build_pause_overlay() -> void:
 	var b_lang := Button.new()
 	b_lang.name = "BtnSwitchLang"
 	b_lang.pressed.connect(func() -> void:
-		var cur := LocalizationManager.get_active_locale()
-		GameState.set_setting("language", "en" if cur == "ru" else "ru")
+		var loc := AppServices.loc()
+		var gs := AppServices.game_state()
+		if loc != null and gs != null:
+			var cur: String = loc.get_active_locale()
+			gs.set_setting("language", "en" if cur == "ru" else "ru")
 	)
 	_pause_settings_box.add_child(b_lang)
 
 	var b_haptics := Button.new()
 	b_haptics.name = "BtnToggleHaptics"
 	b_haptics.pressed.connect(func() -> void:
-		GameState.set_setting("haptics_enabled", not bool(GameState.settings.get("haptics_enabled", true)))
-		_refresh_texts()
+		var gs := AppServices.game_state()
+		if gs != null:
+			gs.set_setting("haptics_enabled", not bool(gs.settings.get("haptics_enabled", true)))
+			_refresh_texts()
 	)
 	_pause_settings_box.add_child(b_haptics)
 
@@ -571,8 +580,9 @@ func _build_result_overlay() -> void:
 	_btn_next_mission.custom_minimum_size = Vector2(0, 48)
 	_btn_next_mission.pressed.connect(func() -> void:
 		var next_id := LevelDefinitions.get_next_mission_id(_director.mission_id) if _director != null else ""
-		if not next_id.is_empty():
-			GameState.pending_launch = {"mode": "campaign", "mission_id": next_id, "resume_autosave": false}
+		var gs := AppServices.game_state()
+		if not next_id.is_empty() and gs != null:
+			gs.pending_launch = {"mode": "campaign", "mission_id": next_id, "resume_autosave": false}
 			get_tree().paused = false
 			get_tree().reload_current_scene()
 	)
@@ -661,11 +671,12 @@ func _apply_safe_area() -> void:
 
 
 func _apply_hud_preferences() -> void:
-	if GameState == null:
+	var cfg := AppServices.settings()
+	if cfg.is_empty():
 		return
-	var sc := float(GameState.settings.get("hud_scale", 1.0))
-	var op := float(GameState.settings.get("hud_opacity", 0.88))
-	var layout := str(GameState.settings.get("touch_layout", "classic"))
+	var sc := float(cfg.get("hud_scale", 1.0))
+	var op := float(cfg.get("hud_opacity", 0.88))
+	var layout := str(cfg.get("touch_layout", "classic"))
 	_left_controls_box.scale = Vector2.ONE * sc
 	_right_controls_box.scale = Vector2.ONE * sc
 	_left_controls_box.modulate.a = op
@@ -686,7 +697,7 @@ func _apply_hud_preferences() -> void:
 		_right_controls_box.offset_left = -310
 		_right_controls_box.offset_right = -14
 
-	_perf_label.visible = bool(GameState.settings.get("show_fps", true))
+	_perf_label.visible = bool(cfg.get("show_fps", true))
 
 
 func _on_director_updated() -> void:
@@ -749,7 +760,8 @@ func _on_mission_finished(victory: bool, stats: Dictionary) -> void:
 		"font_color",
 		Color(0.32, 0.96, 0.56) if victory else Color(1.0, 0.36, 0.32)
 	)
-	var time_str := GameState.format_time(float(stats.get("elapsed", 0.0)))
+	var gs := AppServices.game_state()
+	var time_str: String = gs.format_time(float(stats.get("elapsed", 0.0))) if gs != null else "00:00"
 	var lines := [
 		tr("RESULT_TIME_FMT") % time_str,
 		tr("RESULT_VOXELS_FMT") % int(stats.get("voxels_destroyed", 0)),
@@ -803,6 +815,7 @@ func _refresh_texts() -> void:
 			b.text = tr(map[n_name])
 	var b_hap := find_child("BtnToggleHaptics", true, false) as Button
 	if b_hap != null:
-		var on_off := "ON" if bool(GameState.settings.get("haptics_enabled", true)) else "OFF"
+		var hap_on := bool(AppServices.settings().get("haptics_enabled", true))
+		var on_off := "ON" if hap_on else "OFF"
 		b_hap.text = "%s: %s" % [tr("SETTINGS_HAPTICS"), on_off]
 	_btn_next_mission.text = tr("RESULT_NEXT_MISSION")

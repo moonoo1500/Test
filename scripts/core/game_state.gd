@@ -44,7 +44,9 @@ func _ready() -> void:
 	load_settings()
 	load_progress()
 	resolve_quality_profile()
-	LocalizationManager.apply_language_preference(str(settings.get("language", "auto")))
+	var loc := AppServices.loc()
+	if loc != null:
+		loc.apply_language_preference(str(settings.get("language", "auto")))
 
 
 func _notification(what: int) -> void:
@@ -81,11 +83,15 @@ func save_settings() -> void:
 func set_setting(key: String, value: Variant) -> void:
 	settings[key] = value
 	if key == "language":
-		LocalizationManager.apply_language_preference(str(value))
+		var loc := AppServices.loc()
+		if loc != null:
+			loc.apply_language_preference(str(value))
 	elif key == "quality_profile":
 		resolve_quality_profile()
-	elif key == "sfx_volume" and AudioManager != null:
-		AudioManager.set_master_volume(float(value))
+	elif key == "sfx_volume":
+		var aud := AppServices.audio()
+		if aud != null:
+			aud.set_master_volume(float(value))
 	save_settings()
 	settings_changed.emit()
 

@@ -42,8 +42,9 @@ func _ready() -> void:
 	_loop_player = AudioStreamPlayer.new()
 	_loop_player.name = "LoopPlayer"
 	add_child(_loop_player)
-	if GameState != null:
-		set_master_volume(float(GameState.settings.get("sfx_volume", 0.85)))
+	var gs := AppServices.game_state()
+	if gs != null:
+		set_master_volume(float(gs.settings.get("sfx_volume", 0.85)))
 
 
 func _notification(what: int) -> void:

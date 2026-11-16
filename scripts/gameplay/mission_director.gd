@@ -47,7 +47,7 @@ var _nearby_vehicle: VehicleController = null
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_PAUSABLE
-	GameState.apply_quality_to_viewport(get_viewport())
+	AppServices.apply_quality(get_viewport())
 	_setup_scene_nodes()
 	_launch_from_game_state()
 
@@ -117,7 +117,8 @@ func _setup_scene_nodes() -> void:
 
 
 func _launch_from_game_state() -> void:
-	var launch: Dictionary = GameState.pending_launch
+	var gs := AppServices.game_state()
+	var launch: Dictionary = gs.pending_launch if gs != null else {}
 	mode = str(launch.get("mode", "campaign"))
 	mission_id = str(launch.get("mission_id", "mission_1_dock"))
 	location_id = str(launch.get("location_id", "dock"))
@@ -125,7 +126,8 @@ func _launch_from_game_state() -> void:
 	is_tutorial = mode == "tutorial"
 
 	var resume := bool(launch.get("resume_autosave", false))
-	GameState.pending_launch["resume_autosave"] = false
+	if gs != null:
+		gs.pending_launch["resume_autosave"] = false
 
 	_start_level(resume)
 
@@ -184,8 +186,9 @@ func _start_level(resume_autosave: bool) -> void:
 	_tut_marker_pos = markers.get("step1", Vector3(7.0, 1.2, 9.0))
 	_update_tutorial_marker()
 
-	if resume_autosave and GameState.has_autosave():
-		var res := VoxelSerializer.load_from_file(GameState.AUTOSAVE_PATH, voxel_world)
+	var gs := AppServices.game_state()
+	if resume_autosave and gs != null and gs.has_autosave():
+		var res := VoxelSerializer.load_from_file(gs.AUTOSAVE_PATH, voxel_world)
 		if bool(res.get("ok", false)):
 			voxel_world.rebuild_dirty_sync()
 			_restore_meta_state(res.get("meta", {}))
@@ -218,7 +221,7 @@ func _apply_environment(loc_id: String) -> void:
 	env.fog_light_color = lcfg["fog_color"]
 	env.fog_density = 0.0085
 
-	var qcfg := GameState.get_quality_config()
+	var qcfg := AppServices.quality_cfg()
 	_sun_light.light_color = lcfg["sun_color"]
 	_sun_light.light_energy = float(lcfg["sun_energy"])
 	_sun_light.shadow_enabled = bool(qcfg.get("shadows_enabled", true))
@@ -252,7 +255,7 @@ func _process(dt: float) -> void:
 		_alarm_beep_timer -= dt
 		if _alarm_beep_timer <= 0.0:
 			_alarm_beep_timer = 1.0 if alarm_remaining > 10.0 else 0.5
-			AudioManager.play_sfx("alarm_beep", -4.0, 0.0)
+			AppServices.play_sfx("alarm_beep", -4.0, 0.0)
 		if alarm_remaining <= 0.0:
 			alarm_remaining = 0.0
 			finish_mission(false)
@@ -338,11 +341,11 @@ func toggle_vehicle() -> void:
 		v.set_driver(false)
 		player.set_in_vehicle(null)
 		player.global_position = exit_pos
-		AudioManager.play_sfx("ui_click", 0.0, 0.05)
+		AppServices.play_sfx("ui_click", 0.0, 0.05)
 	elif _nearby_vehicle != null:
 		player.set_in_vehicle(_nearby_vehicle)
 		_nearby_vehicle.set_driver(true)
-		AudioManager.play_sfx("ui_click", 0.0, 0.05)
+		AppServices.play_sfx("ui_click", 0.0, 0.05)
 		if is_tutorial and tutorial_step == 7:
 			_advance_tutorial(8)
 
@@ -367,13 +370,12 @@ func _find_nearest_vehicle(max_dist: float) -> VehicleController:
 func _on_objective_collected(prop: PhysicsProp) -> void:
 	if not collected_ids.has(prop.objective_id):
 		collected_ids.append(prop.objective_id)
-	AudioManager.play_sfx("objective_pickup", 0.0, 0.04)
-	if GameState != null:
-		GameState.vibrate(35)
+	AppServices.play_sfx("objective_pickup", 0.0, 0.04)
+	AppServices.vibrate(35)
 	if not is_sandbox and not alarm_active and alarm_duration > 0.0 and collected_ids.size() >= alarm_trigger_at:
 		alarm_active = true
 		alarm_remaining = alarm_duration
-		AudioManager.play_sfx("alarm_beep", 0.0, 0.0)
+		AppServices.play_sfx("alarm_beep", 0.0, 0.0)
 		notification_pushed.emit(tr("NOTIF_ALARM_TRIGGERED"))
 	state_updated.emit()
 
@@ -420,7 +422,7 @@ func _on_tutorial_action(action_tag: String) -> void:
 func _advance_tutorial(next_step: int) -> void:
 	tutorial_step = next_step
 	_update_tutorial_marker()
-	AudioManager.play_sfx("objective_pickup", -4.0, 0.05)
+	AppServices.play_sfx("objective_pickup", -4.0, 0.05)
 	notification_pushed.emit(tr("TUT_STEP_%d" % clampi(tutorial_step, 1, 8)))
 
 
@@ -447,20 +449,23 @@ func finish_mission(victory: bool) -> void:
 	if finished:
 		return
 	finished = true
-	AudioManager.stop_loop()
+	AppServices.stop_loop()
 	get_tree().paused = true
 
 	var stars := 0
+	var gs := AppServices.game_state()
 	if victory:
-		AudioManager.play_sfx("mission_clear", 0.0, 0.0)
-		if GameState != null:
-			GameState.clear_autosave()
-		if is_tutorial:
-			GameState.mark_tutorial_completed()
+		AppServices.play_sfx("mission_clear", 0.0, 0.0)
+		if gs != null:
+			gs.clear_autosave()
+			if is_tutorial:
+				gs.mark_tutorial_completed()
+				stars = 3
+			elif not is_sandbox:
+				stars = 3 if elapsed_time <= par_time else (2 if elapsed_time <= par_time * 1.45 else 1)
+				gs.record_mission_completion(mission_id, elapsed_time, stars)
+		elif is_tutorial:
 			stars = 3
-		elif not is_sandbox:
-			stars = 3 if elapsed_time <= par_time else (2 if elapsed_time <= par_time * 1.45 else 1)
-			GameState.record_mission_completion(mission_id, elapsed_time, stars)
 
 	var fires_out := voxel_world.fire_sim.extinguished_total if voxel_world.fire_sim != null else 0
 	mission_finished.emit(victory, {
@@ -474,7 +479,7 @@ func finish_mission(victory: bool) -> void:
 
 func pause_game() -> void:
 	get_tree().paused = true
-	AudioManager.stop_loop()
+	AppServices.stop_loop()
 	if hud != null:
 		hud.show_pause_menu(true)
 
@@ -517,7 +522,10 @@ func save_autosave() -> bool:
 		"ammo_charge": int(tool_manager.ammo.get(ToolManager.ToolId.CHARGE, 8)),
 		"ammo_bridge": int(tool_manager.ammo.get(ToolManager.ToolId.BRIDGE, 16)),
 	}
-	return VoxelSerializer.save_to_file(GameState.AUTOSAVE_PATH, voxel_world, meta)
+	var gs := AppServices.game_state()
+	if gs == null:
+		return false
+	return VoxelSerializer.save_to_file(gs.AUTOSAVE_PATH, voxel_world, meta)
 
 
 func _restore_meta_state(meta: Dictionary) -> void:

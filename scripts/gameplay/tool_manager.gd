@@ -248,9 +248,8 @@ func _fire_hammer() -> void:
 	if not phit.is_empty() and phit.get("collider") is PhysicsProp:
 		var prop := phit["collider"] as PhysicsProp
 		prop.apply_prop_damage(16.0, dir * 18.0)
-		AudioManager.play_sfx("impact_metal", 0.0, 0.12)
-		if GameState != null:
-			GameState.vibrate(25)
+		AppServices.play_sfx("impact_metal", 0.0, 0.12)
+		AppServices.vibrate(25)
 		return
 
 	var rc := _world.raycast(origin, dir, 4.2)
@@ -258,16 +257,14 @@ func _fire_hammer() -> void:
 		var mat_id: int = int(rc["mat_id"])
 		var hit_pos: Vector3 = rc["position"]
 		if VoxelMaterials.is_hammer_immune(mat_id):
-			AudioManager.play_sfx("impact_metal", -2.0, 0.1)
+			AppServices.play_sfx("impact_metal", -2.0, 0.1)
 			_world.spawn_fx_burst(hit_pos, Color(1.0, 0.85, 0.35), 4)
-			if GameState != null:
-				GameState.vibrate(14)
+			AppServices.vibrate(14)
 			return
 		var destroyed := _world.carve_sphere(hit_pos, 0.72, 28.0, false, true)
-		AudioManager.play_sfx(VoxelMaterials.get_impact_sfx(mat_id), 0.0, 0.1)
+		AppServices.play_sfx(VoxelMaterials.get_impact_sfx(mat_id), 0.0, 0.1)
 		_player.add_trauma(0.14)
-		if GameState != null:
-			GameState.vibrate(28)
+		AppServices.vibrate(28)
 		if destroyed > 0:
 			tutorial_action.emit("hammer_break")
 
@@ -288,8 +285,7 @@ func _process_thermal_lance(dt: float) -> void:
 		if _spray_accum >= 0.07:
 			_spray_accum = 0.0
 			_world.spawn_fx_burst(end_pos, Color(1.0, 0.62, 0.18), 4)
-			if GameState != null:
-				GameState.vibrate(10)
+			AppServices.vibrate(10)
 		if cut > 0 and mat_id == VoxelMaterials.Id.STEEL:
 			tutorial_action.emit("lance_cut_steel")
 	else:
@@ -302,7 +298,7 @@ func _process_thermal_lance(dt: float) -> void:
 			(phit["collider"] as PhysicsProp).apply_prop_damage(45.0 * dt, dir * 1.5)
 
 	_show_beam(origin + cam.global_transform.basis.x * 0.24 + Vector3(0.0, -0.15, 0.0), end_pos)
-	AudioManager.play_loop("lance_beam", 1.05, -5.0)
+	AppServices.play_loop("lance_beam", 1.05, -5.0)
 
 
 func _process_cryo_foam(dt: float) -> void:
@@ -310,7 +306,7 @@ func _process_cryo_foam(dt: float) -> void:
 	var origin := cam.global_position
 	var dir := -cam.global_transform.basis.z
 	var rc := _world.raycast(origin, dir, 8.0)
-	var target := rc["position"] if bool(rc.get("hit", false)) else origin + dir * 6.0
+	var target: Vector3 = rc["position"] if bool(rc.get("hit", false)) else origin + dir * 6.0
 
 	var extinguished := 0
 	if _world.fire_sim != null:
@@ -321,7 +317,7 @@ func _process_cryo_foam(dt: float) -> void:
 	if _spray_accum >= 0.08:
 		_spray_accum = 0.0
 		_world.spawn_fx_burst(target, Color(0.76, 0.96, 1.0), 5)
-		AudioManager.play_sfx("foam_spray", -4.0, 0.12)
+		AppServices.play_sfx("foam_spray", -4.0, 0.12)
 	if extinguished > 0:
 		tutorial_action.emit("fire_extinguished")
 
@@ -341,9 +337,8 @@ func _throw_charge() -> void:
 	_parent_3d.add_child(charge)
 	charge.setup(_world, dir * 13.5 + Vector3(0.0, 2.8, 0.0), false)
 	_active_charges.append(charge)
-	AudioManager.play_sfx("charge_beep", -2.0, 0.05)
-	if GameState != null:
-		GameState.vibrate(18)
+	AppServices.play_sfx("charge_beep", -2.0, 0.05)
+	AppServices.vibrate(18)
 	charges_changed.emit(_active_charges.size())
 
 
@@ -358,9 +353,8 @@ func _place_bridge() -> void:
 	var span := _compute_bridge_endpoints()
 	var placed := _world.place_bridge_span(span["start"], span["end"], 2)
 	if placed > 0:
-		AudioManager.play_sfx("bridge_place", 0.0, 0.08)
-		if GameState != null:
-			GameState.vibrate(20)
+		AppServices.play_sfx("bridge_place", 0.0, 0.08)
+		AppServices.vibrate(20)
 		tutorial_action.emit("bridge_placed")
 
 
@@ -414,7 +408,7 @@ func _try_pickup_body() -> void:
 			return
 		prop.set_held(true)
 		_held_body = prop
-		AudioManager.play_sfx("ui_click", -2.0, 0.1)
+		AppServices.play_sfx("ui_click", -2.0, 0.1)
 	elif col is RigidBody3D:
 		var rb := col as RigidBody3D
 		rb.gravity_scale = 0.0
@@ -435,7 +429,7 @@ func _release_held_body(throw_speed: float) -> void:
 	if throw_speed > 0.1 and _player != null:
 		var dir := -_player.camera.global_transform.basis.z
 		_held_body.linear_velocity = dir * throw_speed
-		AudioManager.play_sfx("impact_wood", -5.0, 0.1)
+		AppServices.play_sfx("impact_wood", -5.0, 0.1)
 	_held_body = null
 
 
@@ -456,7 +450,7 @@ func _show_beam(a: Vector3, b: Vector3) -> void:
 func _stop_continuous_effects() -> void:
 	if _beam_mesh != null:
 		_beam_mesh.visible = false
-	AudioManager.stop_loop()
+	AppServices.stop_loop()
 
 
 func _prune_charges() -> void:

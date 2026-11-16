@@ -64,7 +64,7 @@ func _physics_process(dt: float) -> void:
 				global_position = hit_pos + normal * 0.08
 				stuck = true
 				velocity = Vector3.ZERO
-				AudioManager.play_sfx("charge_beep", -4.0, 0.05)
+				AppServices.play_sfx("charge_beep", -4.0, 0.05)
 			else:
 				velocity.y -= 14.0 * dt
 				global_position += velocity * dt
@@ -79,7 +79,7 @@ func _physics_process(dt: float) -> void:
 		_led_mat.emission_energy_multiplier = 1.2 + 2.8 * pulse
 	if _beep_accum >= 1.1:
 		_beep_accum = 0.0
-		AudioManager.play_sfx("charge_beep", -10.0, 0.02)
+		AppServices.play_sfx("charge_beep", -10.0, 0.02)
 
 	if auto_fuse_enabled and stuck:
 		fuse_remaining -= dt
@@ -95,7 +95,6 @@ func trigger_explosion() -> void:
 	queue_free()
 	if _voxel_world != null:
 		_voxel_world.detonate_explosion(pos, 2.75, 115.0, true)
-	AudioManager.play_sfx("explosion", 1.5, 0.08)
-	if GameState != null:
-		GameState.vibrate(95)
+	AppServices.play_sfx("explosion", 1.5, 0.08)
+	AppServices.vibrate(95)
 	detonated.emit(pos)

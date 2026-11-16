@@ -158,7 +158,7 @@ func set_driver(active: bool) -> void:
 	else:
 		throttle_input = 0.0
 		steer_input = 0.0
-		AudioManager.stop_loop()
+		AppServices.stop_loop()
 		driver_exited.emit(self)
 
 
@@ -228,7 +228,7 @@ func _physics_process(dt: float) -> void:
 			apply_torque(Vector3.UP * str_in * turn_sign * speed_factor * mass * 5.2)
 
 		var pitch := 0.8 + clampf(absf(fwd_speed) / _max_drive_speed, 0.0, 1.0) * 0.75
-		AudioManager.play_loop("engine_hum", pitch, -9.0)
+		AppServices.play_loop("engine_hum", pitch, -9.0)
 
 		if absf(fwd_speed) > _ram_speed_threshold and _ram_cooldown <= 0.0:
 			_try_ram_voxels(fwd, absf(fwd_speed))
@@ -249,6 +249,5 @@ func _try_ram_voxels(fwd: Vector3, spd: float) -> void:
 	_ram_cooldown = 0.22
 	var dmg := spd * (14.0 if _can_smash_concrete else 6.5)
 	_voxel_world.carve_sphere(rc["position"], 0.95 if _can_smash_concrete else 0.75, dmg, false, true)
-	AudioManager.play_sfx(VoxelMaterials.get_impact_sfx(mat_id), 0.0, 0.1)
-	if GameState != null:
-		GameState.vibrate(40)
+	AppServices.play_sfx(VoxelMaterials.get_impact_sfx(mat_id), 0.0, 0.1)
+	AppServices.vibrate(40)

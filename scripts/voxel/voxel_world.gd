@@ -50,9 +50,7 @@ func _exit_tree() -> void:
 
 
 func apply_quality_settings() -> void:
-	if GameState == null:
-		return
-	var cfg: Dictionary = GameState.get_quality_config()
+	var cfg := AppServices.quality_cfg()
 	max_commits_per_frame = int(cfg.get("max_chunk_commits_per_frame", 4))
 	max_active_debris_bodies = int(cfg.get("max_active_debris_bodies", 22))
 	max_particles_budget = int(cfg.get("max_particles_budget", 128))

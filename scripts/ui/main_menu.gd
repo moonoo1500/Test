@@ -27,8 +27,10 @@ var _credits_body: Label
 
 
 func _ready() -> void:
-	GameState.apply_quality_to_viewport(get_viewport())
-	LocalizationManager.language_changed.connect(_on_lang_changed)
+	AppServices.apply_quality(get_viewport())
+	var loc := AppServices.loc()
+	if loc != null:
+		loc.language_changed.connect(_on_lang_changed)
 	_build_menu_ui()
 	_apply_safe_area()
 	_refresh_all()
@@ -106,16 +108,20 @@ func _build_main_page() -> Control:
 	hbox.add_child(col_left)
 
 	_btn_continue = _menu_btn(func() -> void:
-		GameState.pending_launch = {"mode": "campaign", "mission_id": "mission_1_dock", "resume_autosave": true}
+		var gs := AppServices.game_state()
+		if gs != null:
+			gs.pending_launch = {"mode": "campaign", "mission_id": "mission_1_dock", "resume_autosave": true}
 		get_tree().change_scene_to_file("res://scenes/GamePlay.tscn")
 	)
 	_btn_tutorial = _menu_btn(func() -> void:
-		GameState.pending_launch = {
-			"mode": "tutorial",
-			"mission_id": "tutorial",
-			"location_id": "training_yard",
-			"resume_autosave": false,
-		}
+		var gs := AppServices.game_state()
+		if gs != null:
+			gs.pending_launch = {
+				"mode": "tutorial",
+				"mission_id": "tutorial",
+				"location_id": "training_yard",
+				"resume_autosave": false,
+			}
 		get_tree().change_scene_to_file("res://scenes/GamePlay.tscn")
 	)
 	_btn_campaign = _menu_btn(func() -> void:
@@ -243,10 +249,11 @@ func _populate_campaign() -> void:
 	for c in _campaign_list.get_children():
 		c.queue_free()
 
+	var gs := AppServices.game_state()
 	for m in LevelDefinitions.CAMPAIGN_MISSIONS:
 		var mid: String = m["id"]
 		var loc := LevelDefinitions.get_location_config(m["location_id"])
-		var rec := GameState.get_mission_record(mid)
+		var rec: Dictionary = gs.get_mission_record(mid) if gs != null else {}
 		var completed := bool(rec.get("completed", false))
 
 		var card := PanelContainer.new()
@@ -275,7 +282,7 @@ func _populate_campaign() -> void:
 
 		var meta := Label.new()
 		if completed:
-			var bt := GameState.format_time(float(rec.get("best_time", 0.0)))
+			var bt: String = gs.format_time(float(rec.get("best_time", 0.0))) if gs != null else "00:00"
 			meta.text = "%s | %s | %s" % [
 				tr("STATUS_COMPLETED"),
 				tr("BEST_TIME_FMT") % bt,
@@ -291,13 +298,15 @@ func _populate_campaign() -> void:
 		play_btn.text = tr("MENU_REPLAY") if completed else tr("MENU_PLAY")
 		play_btn.custom_minimum_size = Vector2(140, 54)
 		play_btn.pressed.connect(func() -> void:
-			AudioManager.play_sfx("ui_click")
-			GameState.pending_launch = {
-				"mode": "campaign",
-				"mission_id": mid,
-				"location_id": m["location_id"],
-				"resume_autosave": false,
-			}
+			AppServices.play_sfx("ui_click")
+			var g := AppServices.game_state()
+			if g != null:
+				g.pending_launch = {
+					"mode": "campaign",
+					"mission_id": mid,
+					"location_id": m["location_id"],
+					"resume_autosave": false,
+				}
 			get_tree().change_scene_to_file("res://scenes/GamePlay.tscn")
 		)
 		hbox.add_child(play_btn)
@@ -341,13 +350,15 @@ func _populate_sandbox() -> void:
 		btn.custom_minimum_size = Vector2(140, 50)
 		var lid: String = loc_id
 		btn.pressed.connect(func() -> void:
-			AudioManager.play_sfx("ui_click")
-			GameState.pending_launch = {
-				"mode": "sandbox",
-				"mission_id": "sandbox_" + lid,
-				"location_id": lid,
-				"resume_autosave": false,
-			}
+			AppServices.play_sfx("ui_click")
+			var g := AppServices.game_state()
+			if g != null:
+				g.pending_launch = {
+					"mode": "sandbox",
+					"mission_id": "sandbox_" + lid,
+					"location_id": lid,
+					"resume_autosave": false,
+				}
 			get_tree().change_scene_to_file("res://scenes/GamePlay.tscn")
 		)
 		hbox.add_child(btn)
@@ -357,35 +368,47 @@ func _populate_settings() -> void:
 	for c in _settings_box.get_children():
 		c.queue_free()
 
+	var gs := AppServices.game_state()
+	var loc := AppServices.loc()
+	var active_loc: String = loc.get_active_locale() if loc != null else "ru"
+
 	# Language switcher
 	_add_option_row(tr("SETTINGS_LANGUAGE"), [
 		{"label": tr("SETTINGS_LANG_RU"), "val": "ru"},
 		{"label": tr("SETTINGS_LANG_EN"), "val": "en"},
-	], LocalizationManager.get_active_locale(), func(v: String) -> void:
-		GameState.set_setting("language", v)
+	], active_loc, func(v: String) -> void:
+		var g := AppServices.game_state()
+		if g != null:
+			g.set_setting("language", v)
 		_populate_settings()
 	)
 
 	# Quality profile
-	var cur_q := str(GameState.settings.get("quality_profile", "auto"))
+	var cur_q := str(gs.settings.get("quality_profile", "auto")) if gs != null else "auto"
+	var res_q: String = str(gs.resolved_quality) if gs != null else "medium"
 	_add_option_row(tr("SETTINGS_QUALITY"), [
-		{"label": tr("SETTINGS_QUALITY_AUTO") % GameState.resolved_quality.to_upper(), "val": "auto"},
+		{"label": tr("SETTINGS_QUALITY_AUTO") % res_q.to_upper(), "val": "auto"},
 		{"label": tr("SETTINGS_QUALITY_LOW"), "val": "low"},
 		{"label": tr("SETTINGS_QUALITY_MEDIUM"), "val": "medium"},
 		{"label": tr("SETTINGS_QUALITY_HIGH"), "val": "high"},
 	], cur_q, func(v: String) -> void:
-		GameState.set_setting("quality_profile", v)
-		GameState.apply_quality_to_viewport(get_viewport())
+		var g := AppServices.game_state()
+		if g != null:
+			g.set_setting("quality_profile", v)
+			g.apply_quality_to_viewport(get_viewport())
 		_populate_settings()
 	)
 
 	# Touch layout
+	var cur_l := str(gs.settings.get("touch_layout", "classic")) if gs != null else "classic"
 	_add_option_row(tr("SETTINGS_LAYOUT"), [
 		{"label": tr("SETTINGS_LAYOUT_CLASSIC"), "val": "classic"},
 		{"label": tr("SETTINGS_LAYOUT_LEFTY"), "val": "lefty"},
 		{"label": tr("SETTINGS_LAYOUT_COMPACT"), "val": "compact"},
-	], str(GameState.settings.get("touch_layout", "classic")), func(v: String) -> void:
-		GameState.set_setting("touch_layout", v)
+	], cur_l, func(v: String) -> void:
+		var g := AppServices.game_state()
+		if g != null:
+			g.set_setting("touch_layout", v)
 		_populate_settings()
 	)
 
@@ -405,7 +428,9 @@ func _populate_settings() -> void:
 	rst.text = tr("SETTINGS_RESET_PROGRESS")
 	rst.custom_minimum_size = Vector2(260, 44)
 	rst.pressed.connect(func() -> void:
-		GameState.reset_progress()
+		var g := AppServices.game_state()
+		if g != null:
+			g.reset_progress()
 		_refresh_all()
 	)
 	_settings_box.add_child(rst)
@@ -440,13 +465,15 @@ func _add_slider_row(label_text: String, key: String, min_v: float, max_v: float
 	slider.min_value = min_v
 	slider.max_value = max_v
 	slider.step = step_v
-	slider.value = float(GameState.settings.get(key, 1.0))
+	slider.value = float(AppServices.settings().get(key, 1.0))
 	slider.custom_minimum_size = Vector2(260, 32)
 	var val_lbl := Label.new()
 	val_lbl.text = "%.2f" % slider.value
 	slider.value_changed.connect(func(v: float) -> void:
 		val_lbl.text = "%.2f" % v
-		GameState.set_setting(key, v)
+		var g := AppServices.game_state()
+		if g != null:
+			g.set_setting(key, v)
 	)
 	row.add_child(slider)
 	row.add_child(val_lbl)
@@ -456,9 +483,11 @@ func _add_slider_row(label_text: String, key: String, min_v: float, max_v: float
 func _add_toggle_row(label_text: String, key: String) -> void:
 	var cb := CheckButton.new()
 	cb.text = label_text
-	cb.button_pressed = bool(GameState.settings.get(key, false))
+	cb.button_pressed = bool(AppServices.settings().get(key, false))
 	cb.toggled.connect(func(on: bool) -> void:
-		GameState.set_setting(key, on)
+		var g := AppServices.game_state()
+		if g != null:
+			g.set_setting(key, on)
 	)
 	_settings_box.add_child(cb)
 
@@ -468,7 +497,7 @@ func _menu_btn(cb: Callable) -> Button:
 	b.custom_minimum_size = Vector2(0, 56)
 	b.add_theme_font_size_override("font_size", 20)
 	b.pressed.connect(func() -> void:
-		AudioManager.play_sfx("ui_click")
+		AppServices.play_sfx("ui_click")
 		cb.call()
 	)
 	return b
@@ -505,11 +534,12 @@ func _apply_safe_area() -> void:
 
 
 func _refresh_all() -> void:
+	var gs := AppServices.game_state()
 	_title_lbl.text = tr("GAME_TITLE")
 	_sub_lbl.text = tr("GAME_SUBTITLE")
-	_ver_lbl.text = tr("GAME_VERSION_LABEL") % GameState.APP_VERSION
+	_ver_lbl.text = tr("GAME_VERSION_LABEL") % (gs.APP_VERSION if gs != null else "0.1.0-alpha")
 	_btn_continue.text = tr("MENU_CONTINUE")
-	_btn_continue.visible = GameState.has_autosave()
+	_btn_continue.visible = gs != null and gs.has_autosave()
 	_btn_tutorial.text = tr("MENU_TUTORIAL")
 	_btn_campaign.text = tr("MENU_CAMPAIGN")
 	_btn_sandbox.text = tr("MENU_SANDBOX")

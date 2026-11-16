@@ -63,8 +63,8 @@ func _ready() -> void:
 
 
 func apply_quality_far_plane() -> void:
-	if camera != null and GameState != null:
-		var cfg := GameState.get_quality_config()
+	if camera != null:
+		var cfg := AppServices.quality_cfg()
 		camera.far = float(cfg.get("view_distance", 140.0))
 
 
@@ -77,8 +77,9 @@ func set_look_angles(yaw: float, pitch: float) -> void:
 
 
 func add_look_delta(dx_rad: float, dy_rad: float) -> void:
-	var sens := float(GameState.settings.get("camera_sensitivity", 1.0)) if GameState != null else 1.0
-	var inv := -1.0 if (GameState != null and bool(GameState.settings.get("invert_y", false))) else 1.0
+	var cfg_s := AppServices.settings()
+	var sens := float(cfg_s.get("camera_sensitivity", 1.0))
+	var inv := -1.0 if bool(cfg_s.get("invert_y", false)) else 1.0
 	camera_yaw -= dx_rad * sens
 	camera_pitch = clampf(camera_pitch - dy_rad * sens * inv, deg_to_rad(-82.0), deg_to_rad(82.0))
 	rotation.y = camera_yaw
