@@ -1,0 +1,57 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Контур Слома"
+config/name_localized={
+"en": "Fracture Line",
+"ru": "Контур Слома"
+}
+config/description="Тактическая 3D-песочница с разрушаемым воксельным окружением / Tactical voxel demolition sandbox"
+run/main_scene="res://scenes/MainMenu.tscn"
+config/features=PackedStringArray("4.7", "Mobile")
+boot_splash/bg_color=Color(0.0745098, 0.0980392, 0.133333, 1)
+boot_splash/image="res://assets/icons/app_icon.png"
+config/icon="res://assets/icons/app_icon.png"
+config/version="0.1.0-alpha"
+
+[autoload]
+
+LocalizationManager="*res://scripts/core/localization_manager.gd"
+GameState="*res://scripts/core/game_state.gd"
+AudioManager="*res://scripts/core/audio_manager.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=4
+
+[input_devices]
+
+pointing/emulate_touch_from_mouse=false
+pointing/emulate_mouse_from_touch=true
+
+[physics]
+
+common/physics_ticks_per_second=60
+common/max_physics_steps_per_frame=4
+
+[rendering]
+
+renderer/rendering_method="mobile"
+renderer/rendering_method.mobile="mobile"
+rendering/rendering_device/fallback_to_opengl3=true
+textures/vram_compression/import_etc2_astc=true
+anti_aliasing/quality/msaa_3d=0
+environment/defaults/default_clear_color=Color(0.08, 0.11, 0.15, 1)

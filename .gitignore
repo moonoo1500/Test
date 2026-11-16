@@ -1,0 +1,19 @@
+# Godot 4 cache & local state
+.godot/
+*.translation
+*.import.tmp
+
+# Build artifacts & local caches (APKs belong in Releases/Artifacts, not Git)
+build/
+dist/
+*.apk
+*.aab
+*.idsig
+*.keystore
+*.jks
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+logs/
+qa_artifacts/

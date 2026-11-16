@@ -1,0 +1,223 @@
+name: CI & Android APK Build
+
+on:
+  push:
+    branches:
+      - main
+      - "arena/*"
+      - "feat/*"
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GODOT_VERSION: "4.7.2-stable"
+  GODOT_TEMPLATES_DIR_NAME: "4.7.2.stable"
+  GODOT_EDITOR_SETTINGS_NAME: "editor_settings-4.7.tres"
+  APP_VERSION: "0.1.0-alpha"
+
+jobs:
+  lint-test-and-build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Python QA tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install gdtoolkit==4.5.0 pillow fonttools
+
+      - name: Verify localization parity & font glyph coverage
+        run: python tools/check_localization.py
+
+      - name: Run GDScript linter (gdlint)
+        run: gdlint scripts tests
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Ensure Android SDK Build Tools & Platform Tools
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "build-tools;36.1.0"
+
+      - name: Cache Godot Engine & Export Templates
+        id: cache-godot
+        uses: actions/cache@v4
+        with:
+          path: |
+            /tmp/godot-bin
+            ~/.local/share/godot/export_templates
+          key: godot-${{ env.GODOT_VERSION }}-linux-android
+
+      - name: Download Godot ${{ env.GODOT_VERSION }} & Android Export Templates
+        if: steps.cache-godot.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p /tmp/godot-bin ~/.local/share/godot/export_templates/${{ env.GODOT_TEMPLATES_DIR_NAME }}
+          curl -fsSL -L \
+            "https://github.com/godotengine/godot/releases/download/${{ env.GODOT_VERSION }}/Godot_v${{ env.GODOT_VERSION }}_linux.x86_64.zip" \
+            -o /tmp/godot.zip
+          unzip -q -o /tmp/godot.zip -d /tmp/godot-bin
+          mv /tmp/godot-bin/Godot_v${{ env.GODOT_VERSION }}_linux.x86_64 /tmp/godot-bin/godot
+          chmod +x /tmp/godot-bin/godot
+
+          curl -fsSL -L \
+            "https://github.com/godotengine/godot/releases/download/${{ env.GODOT_VERSION }}/Godot_v${{ env.GODOT_VERSION }}_export_templates.tpz" \
+            -o /tmp/templates.tpz
+          unzip -q -o /tmp/templates.tpz -d /tmp/templates_unpack
+          mv /tmp/templates_unpack/templates/* ~/.local/share/godot/export_templates/${{ env.GODOT_TEMPLATES_DIR_NAME }}/
+          rm -rf /tmp/godot.zip /tmp/templates.tpz /tmp/templates_unpack
+
+      - name: Verify Godot binary
+        run: |
+          echo "/tmp/godot-bin" >> $GITHUB_PATH
+          /tmp/godot-bin/godot --version
+
+      - name: Import Godot project resources
+        run: |
+          mkdir -p logs
+          /tmp/godot-bin/godot --headless --path . --import 2>&1 | tee logs/import.log
+
+      - name: Run Godot headless unit & smoke tests
+        run: |
+          /tmp/godot-bin/godot --headless --path . --script res://tests/test_runner.gd 2>&1 | tee logs/tests.log
+
+      - name: Run headless/software benchmark if available
+        run: |
+          if [ -f "scripts/benchmark/benchmark_runner.gd" ]; then
+            /tmp/godot-bin/godot --headless --path . --script res://scripts/benchmark/benchmark_runner.gd 2>&1 | tee logs/benchmark.log
+          else
+            echo "Benchmark script not yet added in this iteration." | tee logs/benchmark.log
+          fi
+
+      - name: Configure Godot Android SDK & Keystore settings
+        env:
+          HAS_PROD_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          mkdir -p ~/.config/godot build
+          SETTINGS_FILE="$HOME/.config/godot/${{ env.GODOT_EDITOR_SETTINGS_NAME }}"
+
+          # Create ephemeral debug keystore if not present
+          DEBUG_KS="$RUNNER_TEMP/debug.keystore"
+          keytool -genkeypair -v \
+            -keystore "$DEBUG_KS" \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=FractureLine Debug,O=FractureLine,C=RU"
+
+          python - "$SETTINGS_FILE" "$ANDROID_HOME" "$JAVA_HOME" "$DEBUG_KS" <<'PY'
+          import pathlib, sys
+          settings_path = pathlib.Path(sys.argv[1])
+          sdk_path, java_path, debug_ks = sys.argv[2], sys.argv[3], sys.argv[4]
+          lines = [
+              '[gd_resource type="EditorSettings" format=3]',
+              '',
+              '[resource]',
+              f'export/android/android_sdk_path = "{sdk_path}"',
+              f'export/android/java_sdk_path = "{java_path}"',
+              f'export/android/debug_keystore = "{debug_ks}"',
+              'export/android/debug_keystore_user = "androiddebugkey"',
+              'export/android/debug_keystore_pass = "android"',
+              '',
+          ]
+          settings_path.write_text("\n".join(lines), encoding="utf-8")
+          PY
+
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
+            echo "SIGNING_MODE=production" >> $GITHUB_ENV
+            RELEASE_KS="$RUNNER_TEMP/release.keystore"
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RELEASE_KS"
+            cp export_presets.cfg "$RUNNER_TEMP/export_presets.cfg.bak"
+            python - "$RELEASE_KS" "$ANDROID_KEY_ALIAS" "$ANDROID_KEYSTORE_PASSWORD" <<'PY'
+          import pathlib, sys
+          ks, alias, pw = sys.argv[1], sys.argv[2], sys.argv[3]
+          cfg = pathlib.Path("export_presets.cfg").read_text(encoding="utf-8")
+          cfg = cfg.replace('keystore/release=""', f'keystore/release="{ks}"')
+          cfg = cfg.replace('keystore/release_user=""', f'keystore/release_user="{alias}"')
+          cfg = cfg.replace('keystore/release_password=""', f'keystore/release_password="{pw}"')
+          pathlib.Path("export_presets.cfg").write_text(cfg, encoding="utf-8")
+          PY
+          else
+            echo "SIGNING_MODE=debug" >> $GITHUB_ENV
+          fi
+
+      - name: Export Android arm64-v8a APK
+        run: |
+          if [ "$SIGNING_MODE" = "production" ]; then
+            APK_NAME="fracture-line-v${{ env.APP_VERSION }}-release-arm64.apk"
+            /tmp/godot-bin/godot --headless --path . --export-release "Android" "build/$APK_NAME" 2>&1 | tee logs/export.log
+            mv "$RUNNER_TEMP/export_presets.cfg.bak" export_presets.cfg || true
+          else
+            APK_NAME="fracture-line-v${{ env.APP_VERSION }}-debug-arm64.apk"
+            /tmp/godot-bin/godot --headless --path . --export-debug "Android" "build/$APK_NAME" 2>&1 | tee logs/export.log
+          fi
+          echo "APK_NAME=$APK_NAME" >> $GITHUB_ENV
+
+      - name: Verify APK ABI, manifest, signature & checksum
+        run: |
+          APK_PATH="build/$APK_NAME"
+          test -s "$APK_PATH"
+          ls -lh "$APK_PATH"
+
+          echo "=== ABI check ==="
+          unzip -l "$APK_PATH" | grep -E "lib/.*\.so"
+          unzip -l "$APK_PATH" | grep -q "lib/arm64-v8a/libgodot_android.so"
+          if unzip -l "$APK_PATH" | grep -qE "lib/(armeabi-v7a|x86|x86_64)/"; then
+            echo "ERROR: Unexpected ABI found in APK!"
+            exit 1
+          fi
+
+          BUILD_TOOLS_DIR=$(ls -d "$ANDROID_HOME/build-tools/"* | sort -V | tail -n 1)
+          echo "Using build-tools: $BUILD_TOOLS_DIR"
+
+          echo "=== aapt2 dump badging ==="
+          "$BUILD_TOOLS_DIR/aapt2" dump badging "$APK_PATH" | head -n 40 | tee logs/apk_badging.txt
+
+          echo "=== apksigner verify ==="
+          "$BUILD_TOOLS_DIR/apksigner" verify --verbose --print-certs "$APK_PATH" | tee logs/apk_signature.txt
+
+          (cd build && sha256sum "$APK_NAME" > "${APK_NAME}.sha256")
+          cat "build/${APK_NAME}.sha256"
+
+      - name: Upload Build Artifacts & QA Logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: fracture-line-android-${{ github.sha }}
+          path: |
+            build/*.apk
+            build/*.sha256
+            logs/*.log
+            logs/*.txt
+          retention-days: 14
+
+      - name: Attach APK to GitHub Release on version tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/*.apk
+            build/*.sha256
+          generate_release_notes: false
