@@ -35,6 +35,7 @@ var _debris_multimesh: MultiMeshInstance3D
 var _particles: Array[Dictionary] = []
 var _fire_multimesh: MultiMeshInstance3D
 var _explosion_depth: int = 0
+var _deferred_collapse_cells: Array[Vector3i] = []
 var _world_epoch: int = 0
 
 
@@ -92,6 +93,8 @@ func clear_world() -> void:
 			body.queue_free()
 	_detached_bodies.clear()
 	_particles.clear()
+	_deferred_collapse_cells.clear()
+	_explosion_depth = 0
 	if fire_sim != null:
 		fire_sim.clear()
 	voxels_destroyed_total = 0
@@ -513,9 +516,22 @@ func carve_sphere(
 		voxels_destroyed_total += destroyed_cells.size()
 		voxels_changed.emit(destroyed_cells.size())
 		if check_collapse:
-			_handle_structural_collapse(destroyed_cells, world_pos)
+			if _explosion_depth > 0:
+				_deferred_collapse_cells.append_array(destroyed_cells)
+			else:
+				_handle_structural_collapse(destroyed_cells, world_pos)
 
+	var coalesced_blasts: Array[Vector3] = []
 	for fb in fuel_blasts:
+		var merged := false
+		for existing in coalesced_blasts:
+			if existing.distance_squared_to(fb) < 1.44:
+				merged = true
+				break
+		if not merged:
+			coalesced_blasts.append(fb)
+
+	for fb in coalesced_blasts:
 		detonate_explosion(fb, 3.2, 85.0, true)
 
 	return destroyed_cells.size()
@@ -536,6 +552,10 @@ func detonate_explosion(
 	_spawn_debris_burst(world_pos, Color(1.0, 0.58, 0.16), 14)
 	_spawn_debris_burst(world_pos, Color(0.28, 0.28, 0.30), 10)
 	explosion_occurred.emit(world_pos, radius)
+	if _explosion_depth == 1 and not _deferred_collapse_cells.is_empty():
+		var batch := _deferred_collapse_cells.duplicate()
+		_deferred_collapse_cells.clear()
+		_handle_structural_collapse(batch, world_pos)
 	_explosion_depth -= 1
 	return destroyed
 
