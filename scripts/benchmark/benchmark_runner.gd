@@ -71,6 +71,9 @@ func _run_benchmark() -> void:
 	if f != null:
 		f.store_string(json_str)
 
+	_entity_root.queue_free()
+	_world.queue_free()
+	await process_frame
 	quit(0)
 
 

@@ -98,22 +98,27 @@ jobs:
 
       - name: Run Godot headless unit & smoke tests
         run: |
-          /tmp/godot-bin/godot --headless --path . --script res://tests/test_runner.gd 2>&1 | tee logs/tests.log
+          timeout -k 5s 90s /tmp/godot-bin/godot --headless --path . --script res://tests/test_runner.gd > logs/tests.log 2>&1
+          cat logs/tests.log
           SUMMARY=$(grep "Test Summary:" logs/tests.log || true)
           echo "::notice title=Tests::$SUMMARY"
 
-      - name: Run headless benchmark & software Vulkan smoke test
+      - name: Run Godot headless 4-phase benchmark
         run: |
-          /tmp/godot-bin/godot --headless --path . --script res://scripts/benchmark/benchmark_runner.gd 2>&1 | tee logs/benchmark.log
+          timeout -k 5s 60s /tmp/godot-bin/godot --headless --path . --script res://scripts/benchmark/benchmark_runner.gd > logs/benchmark.log 2>&1
+          cat logs/benchmark.log
           BENCH_JSON=$(sed -n '/BENCHMARK_JSON_BEGIN/,/BENCHMARK_JSON_END/p' logs/benchmark.log | grep -v 'BENCHMARK_JSON_' | tr -d '\n' | sed 's/  */ /g')
           echo "::notice title=Benchmark::$BENCH_JSON"
 
-          # Software Vulkan shader/scene render check via Mesa lavapipe + Xvfb
-          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb mesa-vulkan-drivers >/dev/null
+      - name: Run software Vulkan (lavapipe) scene render check
+        run: |
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq xvfb mesa-vulkan-drivers
           VK_ICD=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json 2>/dev/null | head -n 1 || true)
           echo "Vulkan ICD: $VK_ICD"
-          timeout 45s xvfb-run -a env VK_ICD_FILENAMES="$VK_ICD" /tmp/godot-bin/godot --rendering-driver vulkan --path . --quit-after 30 --scene res://scenes/GamePlay.tscn 2>&1 | tee logs/vulkan_smoke.log
-          echo "::notice title=VulkanSmoke::$(grep -iE 'ERROR|Vulkan|Shader' logs/vulkan_smoke.log | head -n 6 | tr '\n' ' ')"
+          timeout -k 5s 30s xvfb-run -a env VK_ICD_FILENAMES="$VK_ICD" /tmp/godot-bin/godot --rendering-driver vulkan --path . --quit-after 25 --scene res://scenes/GamePlay.tscn > logs/vulkan_smoke.log 2>&1 || true
+          cat logs/vulkan_smoke.log
+          echo "::notice title=VulkanSmoke::$(tail -n 6 logs/vulkan_smoke.log | tr '\n' ' ')"
 
       - name: Configure Godot Android SDK & Keystore settings
         env:
